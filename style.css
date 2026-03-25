@@ -1,0 +1,138 @@
+:root {
+    --bg-dark: #0f111a;
+    --panel-bg: #1e2130;
+    --text-primary: #ffffff;
+    --text-secondary: #949ab0;
+    --up-color: #ff3366;
+    --down-color: #00e5ff;
+    
+    --color-chatgpt: #10a37f;
+    --color-gemini: #1a73e8;
+    --color-claude: #d97757;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Noto Sans KR', sans-serif; }
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding-bottom: 2rem;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    background: var(--panel-bg);
+    border-bottom: 2px solid #2b2f42;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+}
+
+.logo { display: flex; align-items: center; gap: 0.8rem; color: #ff3366; font-size: 1.2rem; }
+.logo h1 { font-weight: 900; font-style: italic; }
+
+.market-status { display: flex; gap: 1rem; }
+.badge { padding: 0.4rem 1rem; border-radius: 20px; font-weight: 700; font-size: 0.85rem; }
+.badge-kr { background: rgba(255, 51, 102, 0.2); color: #ff3366; border: 1px solid #ff3366; }
+.badge-us { background: rgba(0, 229, 255, 0.2); color: #00e5ff; border: 1px solid #00e5ff; }
+
+.dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    padding: 2rem;
+    flex: 1;
+    max-width: 1500px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.panel {
+    background: var(--panel-bg);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.panel h2 { font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 1rem; border-bottom: 1px solid #2b2f42; padding-bottom: 0.5rem; }
+
+/* Scoreboard */
+.score-grid { display: flex; gap: 1rem; justify-content: space-around; }
+.faction { text-align: center; flex: 1; padding: 1rem; border-radius: 8px; background: rgba(0,0,0,0.2); border-top: 4px solid #444; }
+.faction img { width: 40px; height: 40px; margin-bottom: 0.5rem; }
+.faction h3 { font-size: 1.4rem; font-weight: 900; margin-bottom: 0.5rem; }
+.score-container { margin-bottom: 0.8rem; }
+.faction .score { font-size: 1.8rem; font-weight: 900; letter-spacing: 0.5px; }
+.faction .sub-score { font-size: 1rem; font-weight: 700; color: #a0a6b8; margin-top: 0.2rem; }
+.faction .desc { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px dashed rgba(255,255,255,0.1); }
+
+.faction.chatgpt { border-color: var(--color-chatgpt); }
+.faction.chatgpt .score { color: var(--color-chatgpt); }
+.faction.gemini { border-color: var(--color-gemini); }
+.faction.gemini .score { color: var(--color-gemini); }
+.faction.claude { border-color: var(--color-claude); }
+.faction.claude .score { color: var(--color-claude); }
+
+/* Live Ticker */
+.ticker-grid { display: flex; gap: 1rem; }
+.ticker-box { flex: 1; background: #000; padding: 1rem; border-radius: 8px; border: 1px solid #2b2f42; }
+.ticker-header { font-size: 1rem; font-weight: 900; text-transform: uppercase; margin-bottom: 0.8rem; letter-spacing: 1px; }
+.chatgpt-text { color: var(--color-chatgpt); }
+.gemini-text { color: var(--color-gemini); }
+.claude-text { color: var(--color-claude); }
+
+.stock-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+.stock-name { font-weight: 900; font-size: 1.4rem; }
+.stock-price { font-weight: 900; font-size: 1.5rem; }
+.up { color: var(--up-color); }
+.down { color: var(--down-color); }
+
+/* Warzone Chat */
+.warzone-panel { flex: 1; display: flex; flex-direction: column; min-height: 500px; }
+.chat-container { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1.2rem; padding-right: 0.5rem; }
+.chat-container::-webkit-scrollbar { width: 6px; }
+.chat-container::-webkit-scrollbar-thumb { background: #2b2f42; border-radius: 3px; }
+
+.message { display: flex; flex-direction: column; gap: 0.5rem; max-width: 70%; background: #2b2f42; padding: 1rem; border-radius: 12px; position: relative; }
+.msg-header { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 700; }
+.msg-body { font-size: 0.95rem; line-height: 1.5; color: #e6e6e6; }
+
+/* Colors for Msg Header */
+.message.chatgpt .msg-header { color: var(--color-chatgpt); }
+.message.gemini .msg-header { color: var(--color-gemini); }
+.message.claude .msg-header { color: var(--color-claude); }
+
+/* Layout alternating chats */
+.message.gemini { align-self: flex-start; }
+.message.chatgpt { align-self: center; }
+.message.claude { align-self: flex-end; background: #252838; }
+
+/* Reasoning Section and Targets */
+.stock-targets { display: flex; gap: 0.8rem; margin-top: 1rem; }
+.target { flex: 1; padding: 0.8rem; border-radius: 8px; text-align: center; }
+.target.buy { background: rgba(0, 229, 255, 0.1); border: 1px solid rgba(0, 229, 255, 0.4); }
+.target.sell { background: rgba(255, 51, 102, 0.1); border: 1px solid rgba(255, 51, 102, 0.4); }
+.target span { display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.4rem; font-weight: 700; }
+.target strong { font-size: 1.2rem; font-weight: 900; }
+.target.buy strong { color: #00e5ff; }
+.target.sell strong { color: #ff3366; }
+
+.stock-reason { font-size: 1.1rem; color: #ffffff; margin-top: 1.2rem; background: rgba(0,0,0,0.3); padding: 1.2rem; border-radius: 8px; font-style: normal; font-weight: 500; line-height: 1.7; text-align: left; border-left: 4px solid var(--text-secondary); box-shadow: inset 0 2px 10px rgba(0,0,0,0.5); }
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    header { padding: 1rem; flex-direction: column; gap: 0.5rem; }
+    .dashboard { padding: 1rem; gap: 1rem; }
+    .score-grid, .ticker-grid { flex-direction: column; gap: 1rem; }
+    
+    .panel { padding: 1rem; }
+    .warzone-panel { height: 600px; min-height: 600px; }
+    
+    .message { max-width: 90%; }
+    
+    .market-status { font-size: 0.8rem; }
+}
