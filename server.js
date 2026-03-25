@@ -7,8 +7,32 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
-import YahooFinance from 'yahoo-finance2';
-const yahooFinance = new YahooFinance();
+
+async function fetchYahooPrice(symbol) {
+    try {
+        const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`);
+        if(!res.ok) return null;
+        const data = await res.json();
+        const meta = data.chart?.result?.[0]?.meta;
+        if(!meta) return null;
+        return {
+            symbol,
+            regularMarketPrice: meta.regularMarketPrice,
+            regularMarketChangePercent: meta.chartPreviousClose ? ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose * 100) : 0,
+            priceToBook: 'N/A', trailingPE: 'N/A', fiftyTwoWeekHigh: 'N/A'
+        };
+    } catch(e) { return null; }
+}
+
+async function fetchYahooNews(symbol) {
+    try {
+        const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${symbol}&newsCount=1`);
+        const data = await res.json();
+        const news = data.news?.[0];
+        if (news) return `[${symbol} 뉴스] ${news.title} (링크: ${news.link || 'N/A'})`;
+        return null;
+    } catch(e) { return null; }
+}
 
 // AI SDKs
 import OpenAI from 'openai';
@@ -44,19 +68,11 @@ async function getMarketContext(market) {
     try {
         console.log("getMarketContext: Fetching quotes and news for", list.length, "symbols...");
         
-        const quotesPromise = yahooFinance.quote(list);
-        const newsPromises = list.map(async (sym) => {
-            try {
-                const res = await yahooFinance.search(sym);
-                if(res.news && res.news.length > 0) {
-                    const topNews = res.news[0];
-                    return `[${sym} 뉴스] ${topNews.title} (링크: ${topNews.link})`;
-                }
-            } catch(e) {}
-            return null;
-        });
+        const quotesPromises = list.map(sym => fetchYahooPrice(sym));
+        const newsPromises = list.map(sym => fetchYahooNews(sym));
         
-        const [quotes, newsRaw] = await Promise.all([quotesPromise, Promise.all(newsPromises)]);
+        const [quotesRaw, newsRaw] = await Promise.all([Promise.all(quotesPromises), Promise.all(newsPromises)]);
+        const quotes = quotesRaw.filter(q => q);
         const newsResults = newsRaw.filter(n => n);
         
         console.log("getMarketContext: Fetched successfully.");
@@ -223,7 +239,7 @@ async function generateDailyPicks(market) {
     }
     
     const realContext = await getMarketContext(market);
-    const basePrompt = `${realContext}\n\nYou are a highly professional Wall Street analyst. Based EXACTLY on the real-time financial data and news headlines provided above, you must pick ONE stock that will rise the most today from this allowed list: ${SYMBOLS[market]}. Provide your suggested buy target price (near current) and sell target price. Provide a highly analytical reason (3 sentences max in Korean) packed with actual numbers (like PER, PBR, current price) and citing the specific news headline that proves its potential. Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON: {"symbol": "AAPL", "stockName": "Apple", "buyPrice": "150,000", "sellPrice": "155,000", "reason": "Detailed reason here.", "newsLink": "https://news.url.here"}`;
+    const basePrompt = `${realContext}\n\nYou are a highly professional Wall Street analyst. Based EXACTLY on the real-time financial data and news headlines provided above, you must pick ONE stock that will rise the most today from this allowed list: ${SYMBOLS[market]}. Provide your suggested buy target price (near current) and sell target price. Provide a highly analytical reason (3 sentences max in Korean) packed with actual numbers. Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON: {"symbol": "AAPL", "stockName": "Apple", "buyPrice": "150.50", "sellPrice": "155.00", "reason": "Detailed reason here.", "newsLink": "https://news.url.here"}\n\n[CRITICAL RULE]: For buyPrice and sellPrice, you MUST write the pure raw numbers WITH decimals matching the market currency (e.g., 150.50 for USD, 150000 for KRW). DO NOT use commas! DO NOT hallucinate currency conversions!`;
 
     const db = getDb();
     const gptPrompt = `${basePrompt}\n\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.chatgpt.lessonLearned || '최초 실행이므로 지침이 없습니다.'}\n이 지침을 철저히 반영하여 오늘 더 완벽한 픽을 제안하세요.`;
@@ -370,9 +386,9 @@ setInterval(async () => {
         const symbol = tempDb.picks[key].symbol;
         if(symbol) {
             try {
-                const quote = await yahooFinance.quote(symbol);
-                updates.push({ key, quote });
-            } catch(e) { console.log('Yahoo Finance Error on', symbol); }
+                const quote = await fetchYahooPrice(symbol);
+                if (quote) updates.push({ key, quote });
+            } catch(e) { console.log('Fetch Price Error on', symbol); }
         }
     }
     
