@@ -34,6 +34,22 @@ async function fetchYahooNews(symbol) {
     } catch(e) { return null; }
 }
 
+async function fetchFinnhubPrice(symbol) {
+    if (!process.env.FINNHUB_API_KEY) return null;
+    try {
+        const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${process.env.FINNHUB_API_KEY}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data.c === 0 && data.pc === 0) return null; // invalid symbol
+        return {
+            symbol,
+            regularMarketPrice: data.c,
+            regularMarketChangePercent: data.dp,
+            priceToBook: 'N/A', trailingPE: 'N/A', fiftyTwoWeekHigh: 'N/A'
+        };
+    } catch(e) { return null; }
+}
+
 // AI SDKs
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -68,7 +84,7 @@ async function getMarketContext(market) {
     try {
         console.log("getMarketContext: Fetching quotes and news for", list.length, "symbols...");
         
-        const quotesPromises = list.map(sym => fetchYahooPrice(sym));
+        const quotesPromises = list.map(sym => market === 'US' ? fetchFinnhubPrice(sym) : fetchYahooPrice(sym));
         const newsPromises = list.map(sym => fetchYahooNews(sym));
         
         const [quotesRaw, newsRaw] = await Promise.all([Promise.all(quotesPromises), Promise.all(newsPromises)]);
@@ -377,25 +393,23 @@ cron.schedule('0 5 * * *', () => evaluateMarketClose('US'));
 // Live Warzone Banter (Every 15 Minutes)
 cron.schedule('*/15 * * * *', () => triggerLiveBanter());
 
-// Live Ticker Poller
-setInterval(async () => {
+// Unified Poller Function
+async function pollTickers(filterFn, fetchFn) {
     const tempDb = getDb();
     const updates = [];
-    
     for(let key of Object.keys(tempDb.picks)) {
         const symbol = tempDb.picks[key].symbol;
-        if(symbol) {
+        if(symbol && filterFn(symbol)) {
             try {
-                const quote = await fetchYahooPrice(symbol);
+                const quote = await fetchFn(symbol);
                 if (quote) updates.push({ key, quote });
             } catch(e) { console.log('Fetch Price Error on', symbol); }
         }
     }
-    
-    // Acquire fresh DB lock after network await
+    if (updates.length === 0) return;
+
     const db = getDb();
     let changed = false;
-    
     for (const {key, quote} of updates) {
         if(quote && quote.regularMarketPrice) {
             const pick = db.picks[key];
@@ -416,21 +430,23 @@ setInterval(async () => {
                     db.scores[key].hit += 1;
                     const profit = ((sellRaw - buyRaw) / buyRaw) * 100;
                     db.scores[key].totalReturn = parseFloat((db.scores[key].totalReturn + profit).toFixed(2));
-                    
-                    setTimeout(() => {
-                        broadcastChat(key, getFactionName(key), `🔥 제 타겟 목표가 ${pick.sellPrice} 달성! 적중률과 누적수익을 증명했습니다!`);
-                    }, 1000);
+                    setTimeout(() => { broadcastChat(key, getFactionName(key), `🔥 제 타겟 목표가 ${pick.sellPrice} 달성! 적중률과 누적수익을 증명했습니다!`); }, 1000);
                 }
                 changed = true;
             }
         }
     }
-    
     if(changed) {
         saveDb(db);
         io.emit('initData', { scores: db.scores, picks: db.picks, chatHistory: db.chatHistory.slice(-50) });
     }
-}, 120000); // Poll Yahoo every 120 seconds
+}
+
+// Live Ticker Poller - US Stocks (Finnhub real-time every 10 seconds)
+setInterval(() => pollTickers((sym) => !sym.endsWith('.KS'), fetchFinnhubPrice), 10000);
+
+// Live Ticker Poller - KR Stocks (Yahoo delayed every 120 seconds)
+setInterval(() => pollTickers((sym) => sym.endsWith('.KS'), fetchYahooPrice), 120000);
 
 app.get('/test-pick', async (req, res) => {
     const market = req.query.market || 'KR';
