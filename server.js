@@ -448,6 +448,11 @@ setInterval(() => pollTickers((sym) => !sym.endsWith('.KS'), fetchFinnhubPrice),
 // Live Ticker Poller - KR Stocks (Yahoo delayed every 120 seconds)
 setInterval(() => pollTickers((sym) => sym.endsWith('.KS'), fetchYahooPrice), 120000);
 
+// Anti-Sleep Self-Ping for Render Free Tier (Every 10 minutes)
+setInterval(() => {
+    fetch('https://stock-war.onrender.com/').catch(() => {});
+}, 600000);
+
 app.get('/test-pick', async (req, res) => {
     const market = req.query.market || 'KR';
     console.log("API Triggered: /test-pick for", market);
