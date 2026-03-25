@@ -414,7 +414,7 @@ setInterval(async () => {
         saveDb(db);
         io.emit('initData', { scores: db.scores, picks: db.picks, chatHistory: db.chatHistory.slice(-50) });
     }
-}, 15000); // Poll Yahoo every 15 seconds
+}, 120000); // Poll Yahoo every 120 seconds
 
 app.get('/test-pick', async (req, res) => {
     const market = req.query.market || 'KR';
