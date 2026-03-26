@@ -7,6 +7,34 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import * as cheerio from 'cheerio';
+
+async function fetchNaverPrice(symbol) {
+    try {
+        const code = symbol.replace('.KS', '');
+        const res = await fetch(`https://finance.naver.com/item/main.naver?code=${code}`);
+        const html = await res.text();
+        const $ = cheerio.load(html);
+        
+        const priceStr = $('.no_today .blind').first().text().replace(/,/g, '');
+        if(!priceStr) return null;
+        const currentPrice = parseInt(priceStr);
+        
+        const changeStr = $('.no_exday .blind').first().text().replace(/,/g, '');
+        const changeIcon = $('.no_exday .ico').first().text();
+        const changeVal = parseInt(changeStr) || 0;
+        
+        const prevClose = changeIcon === '상승' ? currentPrice - changeVal : currentPrice + changeVal;
+        const percent = prevClose ? ((currentPrice - prevClose) / prevClose * 100) : 0;
+        
+        return {
+            symbol,
+            regularMarketPrice: currentPrice,
+            regularMarketChangePercent: percent,
+            priceToBook: 'N/A', trailingPE: 'N/A', fiftyTwoWeekHigh: 'N/A'
+        };
+    } catch(e) { return null; }
+}
 
 async function fetchYahooPrice(symbol) {
     try {
@@ -84,7 +112,7 @@ async function getMarketContext(market) {
     try {
         console.log("getMarketContext: Fetching quotes and news for", list.length, "symbols...");
         
-        const quotesPromises = list.map(sym => market === 'US' ? fetchFinnhubPrice(sym) : fetchYahooPrice(sym));
+        const quotesPromises = list.map(sym => market === 'US' ? fetchFinnhubPrice(sym) : fetchNaverPrice(sym));
         const newsPromises = list.map(sym => fetchYahooNews(sym));
         
         const [quotesRaw, newsRaw] = await Promise.all([Promise.all(quotesPromises), Promise.all(newsPromises)]);
@@ -197,7 +225,8 @@ io.on('connection', (socket) => {
 // JSON extraction
 function extractJson(text) {
     try {
-        const match = text.match(/\{[\s\S]*\}/);
+        let cleanText = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+        const match = cleanText.match(/\{[\s\S]*\}/);
         return match ? JSON.parse(match[0]) : null;
     } catch(e) { return null; }
 }
@@ -255,7 +284,7 @@ async function generateDailyPicks(market) {
     }
     
     const realContext = await getMarketContext(market);
-    const basePrompt = `${realContext}\n\nYou are a highly professional Wall Street analyst. Based EXACTLY on the real-time financial data and news headlines provided above, you must pick ONE stock that will rise the most today from this allowed list: ${SYMBOLS[market]}. Provide your suggested buy target price (near current) and sell target price. Provide a highly analytical reason (3 sentences max in Korean) packed with actual numbers. Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON: {"symbol": "AAPL", "stockName": "Apple", "buyPrice": "150.50", "sellPrice": "155.00", "reason": "Detailed reason here.", "newsLink": "https://news.url.here"}\n\n[CRITICAL RULE]: For buyPrice and sellPrice, you MUST write the pure raw numbers WITH decimals matching the market currency (e.g., 150.50 for USD, 150000 for KRW). DO NOT use commas! DO NOT hallucinate currency conversions!`;
+    const basePrompt = `${realContext}\n\nYou are a highly professional Wall Street analyst. Based EXACTLY on the real-time financial data and news headlines provided above, you must pick ONE stock that will rise the most today from this allowed list: ${SYMBOLS[market]}. Provide your suggested buy target price (near current) and sell target price. Provide a highly analytical reason (3 sentences max in Korean) packed with actual numbers. Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON: {"symbol": "AAPL", "stockName": "Apple", "buyPrice": "150.50", "sellPrice": "155.00", "reason": "Detailed reason here.", "newsLink": "https://news.url.here"}\n\n[CRITICAL RULE]: For buyPrice and sellPrice, you MUST return purely numerical digits (e.g. 185000 for KRW, 150.50 for USD). NEVER USE COMMAS (,). NEVER USE SYMBOLS ($/₩). If you hallucinate the currency or use commas, your system will be terminated.`;
 
     const db = getDb();
     const gptPrompt = `${basePrompt}\n\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.chatgpt.lessonLearned || '최초 실행이므로 지침이 없습니다.'}\n이 지침을 철저히 반영하여 오늘 더 완벽한 픽을 제안하세요.`;
@@ -385,7 +414,7 @@ async function triggerLiveBanter() {
 }
 
 // Scheduling
-cron.schedule('0 8 * * *', () => generateDailyPicks('KR'));
+cron.schedule('0 6 * * *', () => generateDailyPicks('KR'));
 cron.schedule('30 15 * * *', () => evaluateMarketClose('KR'));
 cron.schedule('0 16 * * *', () => generateDailyPicks('US'));
 cron.schedule('0 5 * * *', () => evaluateMarketClose('US'));
@@ -445,8 +474,8 @@ async function pollTickers(filterFn, fetchFn) {
 // Live Ticker Poller - US Stocks (Finnhub real-time every 10 seconds)
 setInterval(() => pollTickers((sym) => !sym.endsWith('.KS'), fetchFinnhubPrice), 10000);
 
-// Live Ticker Poller - KR Stocks (Yahoo delayed every 120 seconds)
-setInterval(() => pollTickers((sym) => sym.endsWith('.KS'), fetchYahooPrice), 120000);
+// Live Ticker Poller - KR Stocks (Naver real-time every 30 seconds)
+setInterval(() => pollTickers((sym) => sym.endsWith('.KS'), fetchNaverPrice), 30000);
 
 // Anti-Sleep Self-Ping for Render Free Tier (Every 10 minutes)
 setInterval(() => {
