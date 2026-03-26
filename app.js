@@ -188,4 +188,56 @@ document.addEventListener('DOMContentLoaded', () => {
             ledgerModal.style.display = 'none';
         });
     }
+
+    // --- Market Status Dynamic Countdown ---
+    function updateMarketStatus() {
+        const container = document.getElementById('marketStatusContainer');
+        if (!container) return;
+
+        const now = new Date();
+        const h = now.getHours();
+        const m = now.getMinutes();
+
+        const isKROpen = (h > 9 || (h === 9 && m >= 0)) && (h < 15 || (h === 15 && m < 30));
+        const isUSOpen = (h === 23 && m >= 30) || (h < 5);
+
+        let statusHtml = '';
+
+        function formatTimeLeft(targetH, targetM) {
+            let targetDate = new Date(now);
+            targetDate.setHours(targetH, targetM, 0, 0);
+            if (now >= targetDate) {
+                targetDate.setDate(targetDate.getDate() + 1);
+            }
+            const diffMs = targetDate - now;
+            const diffH = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffM = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+            const diffS = Math.floor((diffMs % (1000 * 60)) / 1000);
+            return `${String(diffH).padStart(2, '0')}:${String(diffM).padStart(2, '0')}:${String(diffS).padStart(2, '0')}`;
+        }
+
+        if (isKROpen || isUSOpen) {
+            const isKR = isKROpen;
+            const marketName = isKR ? '국내장' : '해외장';
+            const closeH = isKR ? 15 : 5;
+            const closeM = isKR ? 30 : 0;
+            const timeLeft = formatTimeLeft(closeH, closeM);
+            statusHtml = `<span class="badge badge-active"><i class="fa-solid fa-fire"></i> ${marketName} 투자 진행중 : ${timeLeft}</span>`;
+        } else {
+            let nextH, nextM, marketName;
+            if (h >= 5 && h < 9) {
+                nextH = 9; nextM = 0; marketName = '국내장';
+            } else {
+                nextH = 23; nextM = 30; marketName = '해외장';
+            }
+            const timeLeft = formatTimeLeft(nextH, nextM);
+            // user request: "현재 준비중 : 남은시간 타이머"
+            statusHtml = `<span class="badge badge-sleep"><i class="fa-solid fa-mug-hot"></i> ${marketName} 현재 준비중 : ${timeLeft}</span>`;
+        }
+        
+        container.innerHTML = statusHtml;
+    }
+
+    setInterval(updateMarketStatus, 1000);
+    updateMarketStatus();
 });
