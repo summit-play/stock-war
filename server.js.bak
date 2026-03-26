@@ -54,26 +54,14 @@ async function fetchYahooPrice(symbol) {
     } catch(e) { return null; }
 }
 
-async function fetchMacroNews(market) {
+async function fetchYahooNews(symbol) {
     try {
-        const query = market === 'US' ? '^GSPC' : '^KS11';
-        const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${query}&newsCount=10`);
+        const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${symbol}&newsCount=1`);
         const data = await res.json();
-        const newsList = data.news?.slice(0, 10) || [];
-        if (newsList.length > 0) {
-            return newsList.map(n => `- [${n.publisher}] ${n.title} (링크: ${n.link})`).join('\n');
-        }
-        return "관련 매크로 뉴스가 없습니다.";
-    } catch(e) { return "관련 매크로 뉴스가 없습니다."; }
-}
-
-async function fetchExchangeRate() {
-    try {
-        const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/KRW=X`);
-        if(!res.ok) return 1400;
-        const data = await res.json();
-        return data.chart?.result?.[0]?.meta?.regularMarketPrice || 1400;
-    } catch(e) { return 1400; }
+        const news = data.news?.[0];
+        if (news) return `[${symbol} 뉴스] ${news.title} (링크: ${news.link || 'N/A'})`;
+        return null;
+    } catch(e) { return null; }
 }
 
 async function fetchFinnhubPrice(symbol) {
@@ -127,19 +115,19 @@ async function getMarketContext(market) {
         console.log("getMarketContext: Fetching quotes and news for", list.length, "symbols...");
         
         const quotesPromises = list.map(sym => market === 'US' ? fetchFinnhubPrice(sym) : fetchNaverPrice(sym));
-        const quotesRaw = await Promise.all(quotesPromises);
-        const quotes = quotesRaw.filter(q => q);
+        const newsPromises = list.map(sym => fetchYahooNews(sym));
         
-        // Fetch Top 10 Macro News for the market
-        const macroNewsTxt = await fetchMacroNews(market);
+        const [quotesRaw, newsRaw] = await Promise.all([Promise.all(quotesPromises), Promise.all(newsPromises)]);
+        const quotes = quotesRaw.filter(q => q);
+        const newsResults = newsRaw.filter(n => n);
         
         console.log("getMarketContext: Fetched successfully.");
-        let ctx = "📊 [현재 핵심 기업들 실시간 주가 등락]\n";
+        let ctx = "📊 [현재 실시간 상장 주가 및 기초 데이터]\n";
         for (const q of quotes) {
-            ctx += `- [${q.symbol}] 현재가: ${q.regularMarketPrice}, 일일변동률: ${q.regularMarketChangePercent?.toFixed(2)}%\n`;
+            ctx += `- [${q.symbol}] 현재가: ${q.regularMarketPrice}, 일일변동률: ${q.regularMarketChangePercent?.toFixed(2)}%, PBR: ${q.priceToBook || 'N/A'}, PER: ${q.trailingPE || 'N/A'}, 52주최고: ${q.fiftyTwoWeekHigh}\n`;
         }
         
-        ctx += `\n📰 [실시간 거시 경제/정치 주요 뉴스 10선 (자유 종목 발굴용)]\n${macroNewsTxt}\n`;
+        ctx += "\n📰 [실시간 주요 뉴스 요약]\n" + newsResults.join("\n") + "\n";
         return ctx;
     } catch(e) { 
         console.error("getMarketContext Error:", e.message);
@@ -156,12 +144,14 @@ const AppStateSchema = new mongoose.Schema({
     picks: Object,
     chatHistory: Array
 });
-const AppState = mongoose.model('AppState', AppStateSchema);function getFallbackDb() {
+const AppState = mongoose.model('AppState', AppStateSchema);
+
+function getFallbackDb() {
     return {
         scores: {
-            chatgpt: { hit: 0, total: 0, totalReturn: 0.0, lessonLearned: '', balance: 10000000, loanAmount: 0, ledger: [] },
-            gemini: { hit: 0, total: 0, totalReturn: 0.0, lessonLearned: '', balance: 10000000, loanAmount: 0, ledger: [] },
-            claude: { hit: 0, total: 0, totalReturn: 0.0, lessonLearned: '', balance: 10000000, loanAmount: 0, ledger: [] }
+            chatgpt: { hit: 0, total: 0, totalReturn: 0.0, lessonLearned: '' },
+            gemini: { hit: 0, total: 0, totalReturn: 0.0, lessonLearned: '' },
+            claude: { hit: 0, total: 0, totalReturn: 0.0, lessonLearned: '' }
         },
         picks: {
             chatgpt: { symbol: '005930.KS', stockName: '삼성전자', currentPrice: '0', change: '+0.0%', buyPrice: '0', sellPrice: '0', reason: '대기 중입니다.', achieved: false },
@@ -189,7 +179,6 @@ async function initDb() {
                 console.log("Migration Complete.");
             }
             memoryDb = cloudState.toObject();
-            migrateSchema(memoryDb);
         } catch(e) {
             console.error("MongoDB Connection Failed! Falling back to local db.json. Error:", e.name);
             loadLocalDb();
@@ -200,25 +189,11 @@ async function initDb() {
     }
 }
 
-function migrateSchema(db) {
-    let changed = false;
-    for (const key of ['chatgpt', 'gemini', 'claude']) {
-        if (db.scores[key].balance === undefined) {
-            db.scores[key].balance = 10000000;
-            db.scores[key].loanAmount = 0;
-            db.scores[key].ledger = [];
-            changed = true;
-        }
-    }
-    if (changed) saveDb(db);
-}
-
 function loadLocalDb() {
     if (!fs.existsSync(DB_FILE)) {
         fs.writeFileSync(DB_FILE, JSON.stringify(getFallbackDb(), null, 2));
     }
     memoryDb = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
-    migrateSchema(memoryDb);
 }
 
 function getDb() { return memoryDb; }
@@ -305,79 +280,51 @@ async function generateDailyPicks(market) {
     
     console.log("generateDailyPicks Triggered for market:", market);
     try {
-        broadcastChat('system', 'System', `🔔 [${market === 'KR'?'국내장':'해외장'}] AI 3대장이 오늘의 종목 픽을 시작합니다.`);
-    } catch(e) { console.error("broadcastChat Error:", e.message); }
+        broadcastChat('chatgpt', 'System', `🔔 [${market === 'KR'?'국내장':'해외장'}] AI 3대장이 오늘의 종목 픽을 시작합니다.`);
+    } catch(e) {
+        console.error("broadcastChat Error:", e.message);
+    }
     
     const realContext = await getMarketContext(market);
+    const basePrompt = `${realContext}\n\nYou are a highly professional Wall Street analyst. Based EXACTLY on the real-time financial data and news headlines provided above, you must pick ONE stock that will rise the most today from this allowed list: ${SYMBOLS[market]}. Provide your suggested buy target price (near current) and sell target price. Provide a highly analytical reason (3 sentences max in Korean) packed with actual numbers. Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON: {"symbol": "AAPL", "stockName": "Apple", "buyPrice": "150.50", "sellPrice": "155.00", "reason": "Detailed reason here.", "newsLink": "https://news.url.here"}\n\n[CRITICAL RULE]: For buyPrice and sellPrice, you MUST return purely numerical digits (e.g. 185000 for KRW, 150.50 for USD). NEVER USE COMMAS (,). NEVER USE SYMBOLS ($/₩). If you hallucinate the currency or use commas, your system will be terminated.`;
+
     const db = getDb();
-    
-    const krwRate = market === 'US' ? await fetchExchangeRate() : 1;
-
-    const basePrompt = `${realContext}\n\nYou are a highly professional Wall Street analyst managing a virtual hedge fund.
-Based EXACTLY on the real-time macroeconomic and political news provided above, you must freely pick ONE stock from the ENTIRE ${market === 'KR'?'Korean (KOSPI/KOSDAQ)':'US (NYSE/NASDAQ)'} market that will rise the most today.
-Your current account balance is: [CURRENT_BALANCE] KRW.
-Provide a suggested buy target price (near current) and sell target price. Provide a highly analytical reason (3 sentences max in Korean) packed with actual numbers.
-Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON: 
-{"symbol": "${market === 'KR'?'005930.KS':'AAPL'}", "stockName": "Apple", "buyPrice": "150.50", "sellPrice": "155.00", "reason": "Detailed reason here.", "newsLink": "https://news.url.here"}
-
-[CRITICAL RULE]: 
-1. The "symbol" MUST be the exact official ticker. For US, like AAPL or TSLA. For KR, it MUST be the 6-digit code followed by .KS (e.g. 005930.KS). If you output a wrong symbol, the system crashes!
-2. For buyPrice and sellPrice, you MUST return purely numerical digits (e.g. 185000 for KRW, 150.50 for USD). NEVER USE COMMAS (,). NEVER USE SYMBOLS.
-`;
-
-    const gptBal = (db.scores.chatgpt.balance || 0).toLocaleString();
-    const geminiBal = (db.scores.gemini.balance || 0).toLocaleString();
-    const claudeBal = (db.scores.claude.balance || 0).toLocaleString();
-
-    const gptPrompt = basePrompt.replace('[CURRENT_BALANCE]', gptBal) + `\n\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.chatgpt.lessonLearned || '없음'}\n이 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
-    const geminiPrompt = basePrompt.replace('[CURRENT_BALANCE]', geminiBal) + `\n\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.gemini.lessonLearned || '없음'}\n이 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
-    const claudePrompt = basePrompt.replace('[CURRENT_BALANCE]', claudeBal) + `\n\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.claude.lessonLearned || '없음'}\n이 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
+    const gptPrompt = `${basePrompt}\n\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.chatgpt.lessonLearned || '최초 실행이므로 지침이 없습니다.'}\n이 지침을 철저히 반영하여 오늘 더 완벽한 픽을 제안하세요.`;
+    const geminiPrompt = `${basePrompt}\n\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.gemini.lessonLearned || '최초 실행이므로 지침이 없습니다.'}\n이 지침을 철저히 반영하여 오늘 더 완벽한 픽을 제안하세요.`;
+    const claudePrompt = `${basePrompt}\n\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.claude.lessonLearned || '최초 실행이므로 지침이 없습니다.'}\n이 지침을 철저히 반영하여 오늘 더 완벽한 픽을 제안하세요.`;
 
     try {
         let gptRaw = "", geminiRaw = "", claudeRaw = "";
+        
         try { gptRaw = await callChatGPT(gptPrompt); } catch(e) { console.error("GPT Error", e.message); }
         try { geminiRaw = await callGemini(geminiPrompt); } catch(e) { console.error("Gemini Error", e.message); }
         try { claudeRaw = await callClaude(claudePrompt); } catch(e) { console.error("Claude Error", e.message); }
         
+        console.log("===== RAW OUTPUTS =====");
+        console.log("GPT:", gptRaw.slice(0,100));
+        console.log("GEMINI:", geminiRaw.slice(0,100));
+        console.log("CLAUDE:", claudeRaw.slice(0,100));
+
         const gptP = extractJson(gptRaw);
         const geminiP = extractJson(geminiRaw);
         const claudeP = extractJson(claudeRaw);
         
-        function processPick(aiKey, pickPayload) {
-            if(!pickPayload) return;
-            const balance = db.scores[aiKey].balance || 0;
-            const buyPriceRaw = parseFloat(String(pickPayload.buyPrice).replace(/,/g, ''));
-            let shareCostKRW = market === 'US' ? (buyPriceRaw * krwRate) : buyPriceRaw;
-            let shares = shareCostKRW > 0 ? Math.floor(balance / shareCostKRW) : 0;
-            let investedKRW = shares * shareCostKRW;
-            
-            db.picks[aiKey] = { 
-                ...pickPayload, 
-                currentPrice: '0', change: '+0.0%', achieved: false,
-                shares: shares, investedKRW: investedKRW, buyPriceRaw: buyPriceRaw, market: market
-            };
-            db.scores[aiKey].total += 1;
-        }
-        
-        processPick('chatgpt', gptP);
-        processPick('gemini', geminiP);
-        processPick('claude', claudeP);
+        console.log("Extracted JS:", !!gptP, !!geminiP, !!claudeP);
+
+        const db = getDb();
+        if(gptP) { db.picks.chatgpt = { ...gptP, currentPrice: '0', change: '+0.0%', achieved: false }; db.scores.chatgpt.total += 1; }
+        if(geminiP) { db.picks.gemini = { ...geminiP, currentPrice: '0', change: '+0.0%', achieved: false }; db.scores.gemini.total += 1; }
+        if(claudeP) { db.picks.claude = { ...claudeP, currentPrice: '0', change: '+0.0%', achieved: false }; db.scores.claude.total += 1; }
         saveDb(db);
 
         io.emit('initData', { scores: db.scores, picks: db.picks, chatHistory: db.chatHistory.slice(-50) });
 
-        setTimeout(() => broadcastChat('chairman', '의장 (Chairman)', `🔔 [${market === 'KR'?'한국장':'미국장'} 개장] AI 3대장의 포트폴리오 매수가 승인되었습니다. (적용환율: ${market==='US'?krwRate.toLocaleString()+'원/불':'1:1'})`), 2000);
-        
+        setTimeout(() => broadcastChat('chatgpt', 'ChatGPT', `내가 오늘 고른 종목은 ${gptP?.stockName}입니다. 내 완벽한 데이터를 믿어보시죠.`), 2000);
+        setTimeout(() => broadcastChat('gemini', 'Gemini', `시대의 트렌드는 ${geminiP?.stockName}입니다! 챗지피티픽은 너무 진부하네요.`), 5000);
         setTimeout(() => {
-            if(gptP) broadcastChat('chairman', '의장 (Chairman)', `[ChatGPT] ${gptP.stockName}(${gptP.symbol}) | 목표가: ${gptP.buyPrice} | 매수: ${db.picks.chatgpt.shares}주 | 투자금: ${Math.round(db.picks.chatgpt.investedKRW).toLocaleString()}₩`);
-        }, 5000);
-        setTimeout(() => {
-            if(geminiP) broadcastChat('chairman', '의장 (Chairman)', `[Gemini] ${geminiP.stockName}(${geminiP.symbol}) | 목표가: ${geminiP.buyPrice} | 매수: ${db.picks.gemini.shares}주 | 투자금: ${Math.round(db.picks.gemini.investedKRW).toLocaleString()}₩`);
-        }, 8000);
-        setTimeout(() => {
-            if(claudeP) broadcastChat('chairman', '의장 (Chairman)', `[Claude] ${claudeP.stockName}(${claudeP.symbol}) | 목표가: ${claudeP.buyPrice} | 매수: ${db.picks.claude.shares}주 | 투자금: ${Math.round(db.picks.claude.investedKRW).toLocaleString()}₩`);
+            broadcastChat('claude', 'Claude', `두 분 다 펀더멘털 분석을 안 하시는군요. 전 ${claudeP?.stockName} 픽으로 묵직하게 이겨드리겠습니다.`);
             isGenerating = false;
-        }, 11000);
+        }, 9000);
 
     } catch (error) {
         console.error("AI Pick Generation Error:", error);
@@ -386,86 +333,53 @@ Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON:
 }
 
 async function evaluateMarketClose(market) {
+    if (isGenerating) return;
+    isGenerating = true;
+    console.log(`evaluateMarketClose Triggered for ${market}`);
+
+    broadcastChat('chatgpt', 'System', `🔔 [${market === 'KR'?'국내장':'해외장'}] 마감. AI 3대장의 복기 및 뉴런 진화(Evolution)가 시작됩니다.`);
     const db = getDb();
-    const krwRate = market === 'US' ? await fetchExchangeRate() : 1;
     
-    for (const f of [{key:'chatgpt', name:'ChatGPT'}, {key:'gemini', name:'Gemini'}, {key:'claude', name:'Claude'}]) {
+    // Evaluate AIs
+    const fns = [
+        { key: 'chatgpt', name: 'ChatGPT', callFn: callChatGPT },
+        { key: 'gemini', name: 'Gemini', callFn: callGemini },
+        { key: 'claude', name: 'Claude', callFn: callClaude }
+    ];
+    
+    for (const f of fns) {
         const pick = db.picks[f.key];
-        if (!pick.symbol || pick.market !== market) continue;
+        if (!pick.symbol) continue;
         
-        const buyRaw = pick.buyPriceRaw || 1;
+        const buyRaw = parseFloat(String(pick.buyPrice || "1").replace(/,/g, ''));
         const currentRaw = parseFloat(String(pick.currentPrice || "1").replace(/,/g, ''));
-        const sellRaw = parseFloat(String(pick.sellPrice || "0").replace(/,/g, ''));
         
         let finalAchieved = pick.achieved;
-        let profitAmt = 0;
-        let profitPercent = 0;
+        let profit = 0;
         
-        if (finalAchieved) {
-            profitAmt = (sellRaw - buyRaw) * pick.shares * krwRate;
-            profitPercent = ((sellRaw - buyRaw) / buyRaw) * 100;
-        } else {
-            profitAmt = (currentRaw - buyRaw) * pick.shares * krwRate;
-            profitPercent = ((currentRaw - buyRaw) / buyRaw) * 100;
-            db.scores[f.key].balance += profitAmt; // Apply the floating PnL natively to balance at close
+        // 장 마감 때까지 목표 매도가를 안 찍었을 때 최종 계산
+        if (!finalAchieved) {
+            profit = ((currentRaw - buyRaw) / buyRaw) * 100;
+            // 추천가 대비 1원이라도 올랐다면 '적중'으로 인정!
+            if (currentRaw > buyRaw) {
+                finalAchieved = true;
+                db.scores[f.key].hit += 1;
+            }
+            db.scores[f.key].totalReturn = parseFloat((db.scores[f.key].totalReturn + profit).toFixed(2));
         }
         
-        db.scores[f.key].totalReturn = parseFloat((db.scores[f.key].totalReturn + profitPercent).toFixed(2));
+        const prompt = `[시장 마감 결과 보고]\n당신은 오늘 ${pick.stockName} (${pick.symbol}) 주식이 오를 것이라고 호언장담했습니다.\n당신의 추천 매수가는 ${pick.buyPrice}였고, 마감 가격은 ${pick.currentPrice}입니다.\n\n결과 판정: ${finalAchieved ? '상승 예측 적중 (수익 발생)!' : '가치 하락 (원금 손실 발생)'}\n\n위 결과를 바탕으로 당신의 오늘 분석 모델의 어떤 데이터 방향이 틀렸는지(또는 잘 맞았는지) 뼈저리게 복기하고, 내일 추천 방향을 수정할 '진화 지침(오답노트)'을 1문장(한국어)으로 작성하세요. 이 문장은 내일 당신의 판단식에 영구 주입됩니다.`;
         
-        // Add to Ledger
-        db.scores[f.key].ledger.unshift({
-            date: new Date().toISOString().split('T')[0],
-            symbol: pick.symbol,
-            stockName: pick.stockName,
-            buyTarget: pick.buyPrice,
-            sellTarget: pick.sellPrice,
-            buyActual: buyRaw,
-            sellActual: finalAchieved ? sellRaw : currentRaw,
-            profitAmount: profitAmt,
-            profitPercent: profitPercent.toFixed(2),
-            hit: finalAchieved
-        });
-        if(db.scores[f.key].ledger.length > 50) db.scores[f.key].ledger.pop();
-        
-        // Bankruptcy Check
-        let balanceAfter = db.scores[f.key].balance;
-        let loanGiven = false;
-        if (balanceAfter <= 500000) {
-            db.scores[f.key].balance += 5000000;
-            db.scores[f.key].loanAmount += 5000000;
-            loanGiven = true;
-            setTimeout(() => {
-                broadcastChat('chairman', '의장 (Chairman)', `🚨 [파산 선고] ${f.name}의 계좌 잔고가 파산 위기에 처했습니다. 형편없는 투자 실력에 유감을 표하며 5,000,000₩의 긴급 구제 금융 대출을 집행합니다.`);
-            }, 5000);
-        }
-
-        const prompt = `오늘 장마감 결과: 
-당신이 추천한 ${pick.stockName}(${pick.symbol})의 당신 목표매수가: ${pick.buyPrice}, 실제 마감가: ${currentRaw}. 
-최종 수익률: ${profitPercent.toFixed(2)}%, 손익금액: ${Math.round(profitAmt).toLocaleString()} KRW. 
-목표 달성 여부: ${finalAchieved ? '성공 (익절)' : '실패 (종가 매도 처리됨)'}.
-현재 당신의 총 잔고: ${Math.round(db.scores[f.key].balance).toLocaleString()} KRW.
-왜 이런 결과가 나왔는지 2문장 이내(한국어)로 매우 뼈아프게 분석하고 '내일의 진화 지침'을 작성하세요. 반드시 마크다운 표나 특수기호 없이 순수 텍스트만 출력하세요.`;
-
         try {
-            let resTxt = "";
-            if (f.key === 'chatgpt') resTxt = await callChatGPT(prompt);
-            else if (f.key === 'gemini') resTxt = await callGemini(prompt);
-            else if (f.key === 'claude') resTxt = await callClaude(prompt);
-            
-            db.scores[f.key].lessonLearned = resTxt;
-            
-            setTimeout(() => {
-                let msg = `[${f.name} 일일 정산] ${pick.stockName} 투자로 ${Math.round(profitAmt).toLocaleString()}₩ ${profitAmt >= 0 ? '수익 스윕 💸' : '손실 폭격 💀'}`;
-                broadcastChat(f.key, f.name, msg);
-            }, 8000 + (Math.random() * 3000));
-        } catch(e) { console.error("Evaluate Error:", e.name); }
+            const lessonRaw = await f.callFn(prompt);
+            db.scores[f.key].lessonLearned = lessonRaw.trim();
+            saveDb(db);
+            broadcastChat(f.key, f.name, `[🧠 진화 완료] ${lessonRaw.trim()}`);
+        } catch(e) {
+            console.error(`Evolution Error for ${f.key}:`, e.message);
+        }
     }
-    
-    saveDb(db);
-    setTimeout(() => {
-        broadcastChat('chairman', '의장 (Chairman)', `🔔 [${market === 'KR'?'한국장':'미국장'} 마감] 전원 강제 청산(정산) 완료. 최신 잔고 현황을 전광판에 동기화합니다.`);
-        io.emit('initData', { scores: db.scores, picks: db.picks, chatHistory: db.chatHistory.slice(-50) });
-    }, 15000);
+    isGenerating = false;
 }
 
 async function triggerLiveBanter() {
@@ -514,11 +428,8 @@ cron.schedule('*/15 * * * *', () => triggerLiveBanter());
 async function pollTickers(filterFn, fetchFn) {
     const tempDb = getDb();
     const updates = [];
-    const krwRate = await fetchExchangeRate();
-
     for(let key of Object.keys(tempDb.picks)) {
-        const pick = tempDb.picks[key];
-        const symbol = pick.symbol;
+        const symbol = tempDb.picks[key].symbol;
         if(symbol && filterFn(symbol)) {
             try {
                 const quote = await fetchFn(symbol);
@@ -526,12 +437,12 @@ async function pollTickers(filterFn, fetchFn) {
             } catch(e) { console.log('Fetch Price Error on', symbol); }
         }
     }
-    
-    if (updates.length > 0) {
-        const db = getDb();
-        for (const u of updates) {
-            const key = u.key;
-            const quote = u.quote;
+    if (updates.length === 0) return;
+
+    const db = getDb();
+    let changed = false;
+    for (const {key, quote} of updates) {
+        if(quote && quote.regularMarketPrice) {
             const pick = db.picks[key];
             const rPrice = quote.regularMarketPrice;
             const newPrice = rPrice.toLocaleString();

@@ -23,10 +23,7 @@
     <main class="dashboard">
         <!-- Scoreboard Panel -->
         <section class="panel scoreboard-panel">
-            <h2 style="display: flex; justify-content: space-between; align-items: center;">
-                <span>🏆 시즌 2: AI 가상 투자 배틀 (시드 1000만)</span>
-                <button id="btnLedger" style="background:var(--color-chatgpt); border:none; color:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:0.9rem; transition:0.2s;"><i class="fa-solid fa-book-open"></i> 전체 거래 장부(Ledger)</button>
-            </h2>
+            <h2>🏆 시즌 AI 예측 적중률 (당일 수익)</h2>
             <div class="score-grid">
                 <div class="faction chatgpt">
                     <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg" alt="ChatGPT">
@@ -115,32 +112,5 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="app.js"></script>
-    
-    <!-- Ledger Modal -->
-    <div id="ledgerModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; align-items:center; justify-content:center;">
-        <div style="background:#1e1e2d; width:95%; max-width:900px; max-height:80vh; border-radius:12px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,0.5); display:flex; flex-direction:column; border: 1px solid rgba(255,255,255,0.1);">
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
-                <h2 style="margin:0; font-size:1.5rem; color:#fff;"><i class="fa-solid fa-book-open"></i> 증권 거래 기록부 (Ledger)</h2>
-                <button id="btnCloseLedger" style="background:transparent; border:none; color:#fff; font-size:1.8rem; cursor:pointer;">&times;</button>
-            </div>
-            <div style="overflow-y:auto; flex-grow:1; padding-right:10px;">
-                <table style="width:100%; border-collapse:collapse; font-size:0.95rem; color:#ddd;">
-                    <thead>
-                        <tr style="background:rgba(255,255,255,0.05); text-align:left;">
-                            <th style="padding:12px 10px; border-bottom:2px solid #444;">날짜</th>
-                            <th style="padding:12px 10px; border-bottom:2px solid #444;">AI</th>
-                            <th style="padding:12px 10px; border-bottom:2px solid #444;">종목(심볼)</th>
-                            <th style="padding:12px 10px; border-bottom:2px solid #444;">매입가</th>
-                            <th style="padding:12px 10px; border-bottom:2px solid #444;">매도가</th>
-                            <th style="padding:12px 10px; border-bottom:2px solid #444;">손익금액</th>
-                            <th style="padding:12px 10px; border-bottom:2px solid #444;">수익률</th>
-                            <th style="padding:12px 10px; border-bottom:2px solid #444;">판정</th>
-                        </tr>
-                    </thead>
-                    <tbody id="ledgerTbody"></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
 </body>
 </html>
