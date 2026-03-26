@@ -7,24 +7,26 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
-import * as cheerio from 'cheerio';
 
 async function fetchNaverPrice(symbol) {
     try {
         const code = symbol.replace('.KS', '');
         const res = await fetch(`https://finance.naver.com/item/main.naver?code=${code}`);
         const html = await res.text();
-        const $ = cheerio.load(html);
         
-        const priceStr = $('.no_today .blind').first().text().replace(/,/g, '');
-        if(!priceStr) return null;
-        const currentPrice = parseInt(priceStr);
+        const todayBlock = html.split('class="no_today"')[1];
+        if(!todayBlock) return null;
         
-        const changeStr = $('.no_exday .blind').first().text().replace(/,/g, '');
-        const changeIcon = $('.no_exday .ico').first().text();
-        const changeVal = parseInt(changeStr) || 0;
+        const blindMatch = todayBlock.match(/<span class="blind">([\d,]+)<\/span>/);
+        if(!blindMatch) return null;
+        const currentPrice = parseInt(blindMatch[1].replace(/,/g, ''));
         
-        const prevClose = changeIcon === '상승' ? currentPrice - changeVal : currentPrice + changeVal;
+        const exdayBlock = html.split('class="no_exday"')[1];
+        const exdayBlind = exdayBlock?.match(/<span class="blind">([\d,]+)<\/span>/);
+        const changeVal = exdayBlind ? parseInt(exdayBlind[1].replace(/,/g, '')) : 0;
+        
+        const isUp = exdayBlock?.includes('상승');
+        const prevClose = isUp ? currentPrice - changeVal : currentPrice + changeVal;
         const percent = prevClose ? ((currentPrice - prevClose) / prevClose * 100) : 0;
         
         return {
