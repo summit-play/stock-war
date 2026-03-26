@@ -329,9 +329,9 @@ Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON:
     const geminiBal = (db.scores.gemini.balance || 0).toLocaleString();
     const claudeBal = (db.scores.claude.balance || 0).toLocaleString();
 
-    const gptPrompt = basePrompt.replace('[CURRENT_BALANCE]', gptBal) + `\n\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.chatgpt.lessonLearned || '없음'}\n이 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
-    const geminiPrompt = basePrompt.replace('[CURRENT_BALANCE]', geminiBal) + `\n\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.gemini.lessonLearned || '없음'}\n이 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
-    const claudePrompt = basePrompt.replace('[CURRENT_BALANCE]', claudeBal) + `\n\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.claude.lessonLearned || '없음'}\n이 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
+    const gptPrompt = basePrompt.replace('[CURRENT_BALANCE]', gptBal) + `\n\n[당신의 고유 투자 철학]: 당신은 매우 **공격적인 모멘텀 투자자(Momentum)**입니다. 현재 시장에서 가장 뜨겁고 변동성이 큰 주도주에 과감하게 배팅하세요.\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.chatgpt.lessonLearned || '없음'}\n이 철학과 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
+    const geminiPrompt = basePrompt.replace('[CURRENT_BALANCE]', geminiBal) + `\n\n[당신의 고유 투자 철학]: 당신은 기업의 내재가치를 중시하는 **가치 투자자(Value)**입니다. 뉴스를 분석하여 현재 저평가되었거나 펀더멘털이 가장 튼튼한 묵직한 우량주를 골라내세요.\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.gemini.lessonLearned || '없음'}\n이 철학과 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
+    const claudePrompt = basePrompt.replace('[CURRENT_BALANCE]', claudeBal) + `\n\n[당신의 고유 투자 철학]: 당신은 남들과 반대로 움직이는 **역발상 투자자(Contrarian)**입니다. 시장이 열광하는 뻔한 주도주를 피하고, 과도하게 소외되었거나 방어력이 뛰어난 종목을 발굴하세요.\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.claude.lessonLearned || '없음'}\n이 철학과 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
 
     try {
         let gptRaw = "", geminiRaw = "", claudeRaw = "";
