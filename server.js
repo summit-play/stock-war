@@ -344,9 +344,17 @@ Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON:
         const claudeP = extractJson(claudeRaw);
         
         function processPick(aiKey, pickPayload) {
-            if(!pickPayload) return;
-            const balance = db.scores[aiKey].balance || 0;
+            if(!pickPayload || !pickPayload.buyPrice || !pickPayload.sellPrice) return;
+            
             const buyPriceRaw = parseFloat(String(pickPayload.buyPrice).replace(/,/g, ''));
+            const sellPriceRaw = parseFloat(String(pickPayload.sellPrice).replace(/,/g, ''));
+            
+            if (isNaN(buyPriceRaw) || buyPriceRaw <= 0 || isNaN(sellPriceRaw)) {
+                console.error(`Invalid Payload Prices for ${aiKey}:`, pickPayload);
+                return;
+            }
+            
+            const balance = db.scores[aiKey].balance || 0;
             let shareCostKRW = market === 'US' ? (buyPriceRaw * krwRate) : buyPriceRaw;
             let shares = shareCostKRW > 0 ? Math.floor(balance / shareCostKRW) : 0;
             let investedKRW = shares * shareCostKRW;
