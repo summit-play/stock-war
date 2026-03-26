@@ -351,8 +351,8 @@ async function evaluateMarketClose(market) {
         const pick = db.picks[f.key];
         if (!pick.symbol) continue;
         
-        const buyRaw = parseFloat((pick.buyPrice || "1").replace(/,/g, ''));
-        const currentRaw = parseFloat((pick.currentPrice || "1").replace(/,/g, ''));
+        const buyRaw = parseFloat(String(pick.buyPrice || "1").replace(/,/g, ''));
+        const currentRaw = parseFloat(String(pick.currentPrice || "1").replace(/,/g, ''));
         
         let finalAchieved = pick.achieved;
         let profit = 0;
@@ -453,8 +453,8 @@ async function pollTickers(filterFn, fetchFn) {
                 pick.currentPrice = newPrice;
                 pick.change = changeStr;
                 
-                const sellRaw = parseFloat((pick.sellPrice || "0").replace(/,/g, ''));
-                const buyRaw = parseFloat((pick.buyPrice || "1").replace(/,/g, ''));
+                const sellRaw = parseFloat(String(pick.sellPrice || "0").replace(/,/g, ''));
+                const buyRaw = parseFloat(String(pick.buyPrice || "1").replace(/,/g, ''));
                 
                 if (!pick.achieved && sellRaw > 0 && rPrice >= sellRaw) {
                     pick.achieved = true;
