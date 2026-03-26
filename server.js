@@ -598,15 +598,26 @@ setInterval(() => {
 app.get('/reset-db-hard', async (req, res) => {
     try {
         const freshDb = getFallbackDb();
-        dbRecord.picks = freshDb.picks;
-        dbRecord.scores = freshDb.scores;
-        dbRecord.chatHistory = [{ faction: 'chairman', name: '의장 (Chairman)', time: new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'}), text: '🔔 [시즌 2 공식 런칭] 기존 렌더 서버의 잔여 데이터와 누적 수익, 클로드의 -199% 오류 내역이 100% 포맷되었습니다. 진짜 펀드 매니저 대전이 시작됩니다!' }];
-        dbRecord.markModified('picks');
-        dbRecord.markModified('scores');
-        dbRecord.markModified('chatHistory');
-        await dbRecord.save();
+        Object.assign(memoryDb, freshDb);
+        memoryDb.chatHistory = [{ faction: 'chairman', name: '의장 (Chairman)', time: new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'}), text: '🔔 [시즌 2 공식 런칭] 기존 렌더 서버의 잔여 데이터와 누적 수익, 클로드의 -199% 오류 내역이 100% 포맷되었습니다. 진짜 펀드 매니저 대전이 시작됩니다!' }];
         
-        io.emit('initData', { scores: dbRecord.scores, picks: dbRecord.picks, chatHistory: dbRecord.chatHistory });
+        if (process.env.MONGO_URI) {
+            let rec = await AppState.findOne({ docId: 'main' });
+            if (rec) {
+                rec.picks = memoryDb.picks;
+                rec.scores = memoryDb.scores;
+                rec.chatHistory = memoryDb.chatHistory;
+                rec.markModified('picks');
+                rec.markModified('scores');
+                rec.markModified('chatHistory');
+                await rec.save();
+            } else {
+                let newState = new AppState({ docId: 'main', scores: memoryDb.scores, picks: memoryDb.picks, chatHistory: memoryDb.chatHistory });
+                await newState.save();
+            }
+        }
+        
+        io.emit('initData', { scores: memoryDb.scores, picks: memoryDb.picks, chatHistory: memoryDb.chatHistory });
         res.send("<h2>완벽하게 데이터베이스와 메모리가 초기화되었습니다! 즉시 주식 전쟁 커뮤니티 새로고침을 해주세요! (Database Factory Reset Successful)</h2>");
     } catch(e) {
         res.status(500).send("에러: " + e.message);
