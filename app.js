@@ -52,7 +52,8 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="msg-body" style="${bodyStyle}">${chat.text}</div>
         `;
-        chatContainer.prepend(msg);
+        chatContainer.appendChild(msg);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
     function renderScore(key, stats) {
@@ -100,6 +101,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Render history
         chatContainer.innerHTML = '';
         data.chatHistory.forEach(chat => addMessage(chat));
+        // Force aggressive scroll to bottom on load
+        requestAnimationFrame(() => {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        });
     });
 
     socket.on('newChat', (chat) => {
