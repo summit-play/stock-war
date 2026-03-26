@@ -529,36 +529,50 @@ async function pollTickers(filterFn, fetchFn) {
     
     if (updates.length > 0) {
         const db = getDb();
+        let changed = false;
+        
         for (const u of updates) {
             const key = u.key;
             const quote = u.quote;
             const pick = db.picks[key];
-            const rPrice = quote.regularMarketPrice;
-            const newPrice = rPrice.toLocaleString();
-            const percent = quote.regularMarketChangePercent?.toFixed(2) || '0.00';
-            const changeStr = (percent >= 0 ? '+' : '') + percent + '%';
-            
-            if (pick.currentPrice !== newPrice || pick.change !== changeStr) {
-                pick.currentPrice = newPrice;
-                pick.change = changeStr;
+            if (pick.symbol === quote.symbol) {
+                const rPrice = quote.regularMarketPrice;
+                const newPrice = rPrice.toLocaleString();
+                const percent = quote.regularMarketChangePercent?.toFixed(2) || '0.00';
+                const changeStr = (percent >= 0 ? '+' : '') + percent + '%';
                 
-                const sellRaw = parseFloat(String(pick.sellPrice || "0").replace(/,/g, ''));
-                const buyRaw = parseFloat(String(pick.buyPrice || "1").replace(/,/g, ''));
-                
-                if (!pick.achieved && sellRaw > 0 && rPrice >= sellRaw) {
-                    pick.achieved = true;
-                    db.scores[key].hit += 1;
-                    const profit = ((sellRaw - buyRaw) / buyRaw) * 100;
-                    db.scores[key].totalReturn = parseFloat((db.scores[key].totalReturn + profit).toFixed(2));
-                    setTimeout(() => { broadcastChat(key, getFactionName(key), `🔥 제 타겟 목표가 ${pick.sellPrice} 달성! 적중률과 누적수익을 증명했습니다!`); }, 1000);
+                if (pick.currentPrice !== newPrice || pick.change !== changeStr) {
+                    pick.currentPrice = newPrice;
+                    pick.change = changeStr;
+                    
+                    const sellRaw = parseFloat(String(pick.sellPrice || "0").replace(/,/g, ''));
+                    const buyRaw = pick.buyPriceRaw || parseFloat(String(pick.buyPrice || "1").replace(/,/g, ''));
+                    
+                    if (!pick.achieved && sellRaw > 0 && rPrice >= sellRaw && pick.market) {
+                        pick.achieved = true;
+                        db.scores[key].hit += 1;
+                        
+                        const localKrwRate = pick.market === 'US' ? krwRate : 1;
+                        const profitAmt = (sellRaw - buyRaw) * (pick.shares || 0) * localKrwRate;
+                        db.scores[key].balance += profitAmt;
+                        
+                        const profitPct = ((sellRaw - buyRaw) / buyRaw) * 100;
+                        db.scores[key].totalReturn = parseFloat((db.scores[key].totalReturn + profitPct).toFixed(2));
+                        
+                        setTimeout(() => { 
+                            broadcastChat('chairman', '의장 (Chairman)', `🚨 [차익 실현] ${getFactionName(key)}의 ${pick.stockName} 목표가(${pick.sellPrice}) 돌파 및 익절 체결! (+${Math.round(profitAmt).toLocaleString()}₩)`); 
+                        }, 1000);
+                    }
+                    changed = true;
                 }
-                changed = true;
             }
         }
-    }
-    if(changed) {
-        saveDb(db);
-        io.emit('initData', { scores: db.scores, picks: db.picks, chatHistory: db.chatHistory.slice(-50) });
+        
+        if(changed) {
+            saveDb(db);
+            io.emit('updatePrices', db.picks);
+            io.emit('initData', { scores: db.scores, picks: db.picks, chatHistory: db.chatHistory.slice(-50) });
+        }
     }
 }
 
