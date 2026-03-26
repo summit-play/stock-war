@@ -52,8 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="msg-body" style="${bodyStyle}">${chat.text}</div>
         `;
-        chatContainer.appendChild(msg);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        chatContainer.prepend(msg);
     }
 
     function renderScore(key, stats) {
@@ -101,7 +100,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Render history
         chatContainer.innerHTML = '';
         data.chatHistory.forEach(chat => addMessage(chat));
-        setTimeout(() => { chatContainer.scrollTop = chatContainer.scrollHeight; }, 100);
     });
 
     socket.on('newChat', (chat) => {
