@@ -247,7 +247,7 @@ async function getGeminiModelString() {
         const target = validModels.find(m => m.name.includes('gemini-2.5-flash')) || validModels.find(m => m.name.includes('gemini-2.0-flash')) || validModels.find(m => m.name.includes('gemini-1.5')) || validModels[0];
         geminiModelString = target.name.replace('models/', '');
         return geminiModelString;
-    } catch(e) { return 'gemini-1.5-flash'; }
+    } catch(e) { return 'gemini-1.5-flash-latest'; }
 }
 
 async function callGemini(prompt) {
