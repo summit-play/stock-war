@@ -124,7 +124,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
             } else {
-                contentHTML = `<div style="padding: 20px; text-align: center; color: #888;">데이터 대기 중...</div>`;
+                contentHTML = `<div style="padding: 20px; text-align: center; color: #ff4757; font-weight: bold;">
+                    🚨 API 통신 오류<br>
+                    <span style="font-size: 0.85rem; color: #ccc; font-weight: normal;">${p.reason || '데이터 갱신 대기 중...'}</span>
+                </div>`;
             }
             
             box.innerHTML = contentHTML;

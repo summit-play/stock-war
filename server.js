@@ -328,9 +328,9 @@ Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON:
 
     try {
         let gptRaw = "", geminiRaw = "", claudeRaw = "";
-        try { gptRaw = await callChatGPT(gptPrompt); } catch(e) { console.error("GPT Error", e.message); }
-        try { geminiRaw = await callGemini(geminiPrompt); } catch(e) { console.error("Gemini Error", e.message); }
-        try { claudeRaw = await callClaude(claudePrompt); } catch(e) { console.error("Claude Error", e.message); }
+        try { gptRaw = await callChatGPT(gptPrompt); } catch(e) { gptRaw = `{"symbol":"","stockName":"[GPT 에러]","buyPrice":"0","sellPrice":"0","reason":"${e.message}"}`; }
+        try { geminiRaw = await callGemini(geminiPrompt); } catch(e) { geminiRaw = `{"symbol":"","stockName":"[Gemini 에러]","buyPrice":"0","sellPrice":"0","reason":"${e.message}"}`; }
+        try { claudeRaw = await callClaude(claudePrompt); } catch(e) { claudeRaw = `{"symbol":"","stockName":"[Claude 에러]","buyPrice":"0","sellPrice":"0","reason":"${e.message}"}`; }
         
         const gptP = extractJson(gptRaw);
         const geminiP = extractJson(geminiRaw);
