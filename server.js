@@ -249,7 +249,7 @@ function extractJson(text) {
 
 // AI API Callers
 async function callChatGPT(prompt) {
-    const res = await openai.chat.completions.create({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }] });
+    const res = await openai.chat.completions.create({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }], max_tokens: 1500 });
     return res.choices[0].message.content;
 }
 
@@ -268,7 +268,10 @@ async function getGeminiModelString() {
 
 async function callGemini(prompt) {
     const modelStr = await getGeminiModelString();
-    const model = genAI.getGenerativeModel({ model: modelStr });
+    const model = genAI.getGenerativeModel({
+        model: modelStr,
+        generationConfig: { maxOutputTokens: 1500 }
+    });
     const res = await model.generateContent(prompt);
     return res.response.text();
 }
@@ -276,7 +279,7 @@ async function callGemini(prompt) {
 async function callClaude(prompt) {
     const msg = await anthropic.messages.create({
         model: "claude-3-haiku-20240307",
-        max_tokens: 500,
+        max_tokens: 1500,
         messages: [{ role: "user", content: prompt }]
     });
     return msg.content[0].text;
