@@ -121,9 +121,20 @@ const SYMBOLS = {
 };
 
 async function getMarketContext(market) {
-    const news = await fetchMacroNews(market);
+    const list = market === 'KR' ? KR_ARRAY : US_ARRAY;
+    console.log("getMarketContext: Fetching quotes and news...");
     
-    let ctx = `📰 [최신 정치/경제 및 시장 주요 뉴스 (총 ${news.length > 0 ? news.length : 100}개)]\n`;
+    const quotesPromises = list.map(sym => market === 'US' ? fetchFinnhubPrice(sym) : fetchNaverPrice(sym));
+    const quotesRaw = await Promise.all(quotesPromises);
+    const quotes = quotesRaw.filter(q => q);
+
+    let ctx = "📊 [현재 실시간 상장 주가 및 기초 데이터]\n";
+    for (const q of quotes) {
+        ctx += `- [${q.symbol}] 현재가: ${q.regularMarketPrice}, 일일변동률: ${q.regularMarketChangePercent?.toFixed(2)}%, PBR: ${q.priceToBook || 'N/A'}, PER: ${q.trailingPE || 'N/A'}, 52주최고: ${q.fiftyTwoWeekHigh}\n`;
+    }
+
+    const news = await fetchMacroNews(market);
+    ctx += `\n📰 [최신 정치/경제 및 시장 주요 뉴스 (총 ${news.length > 0 ? news.length : 100}개)]\n`;
     ctx += "이 뉴스들을 깊이 있게 스터디(Study)하여 현재 어느 섹터나 테마 주식이 오를지 분석하십시오.\n\n";
     
     if (news && news.length > 0) {
