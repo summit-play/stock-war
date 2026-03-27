@@ -89,10 +89,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(data.picks[key].buyPrice) picks[key].buyPrice.textContent = data.picks[key].buyPrice;
                 if(data.picks[key].sellPrice) picks[key].sellPrice.textContent = data.picks[key].sellPrice;
                 if(data.picks[key].reason) picks[key].reason.textContent = `이유: "${data.picks[key].reason}"`;
-                if(data.picks[key].newsLink && data.picks[key].newsLink.startsWith('http')) {
-                    picks[key].newsLink.href = data.picks[key].newsLink;
-                    picks[key].newsLink.style.display = 'block';
-                } else {
+                if(data.picks[key].symbol && picks[key].newsLink) {
+                    const sym = data.picks[key].symbol;
+                    if(sym.endsWith('.KS')) {
+                        picks[key].newsLink.href = `https://finance.naver.com/item/news.naver?code=${sym.replace('.KS', '')}`;
+                    } else {
+                        picks[key].newsLink.href = `https://finance.yahoo.com/quote/${sym}/news`;
+                    }
+                    picks[key].newsLink.style.display = 'inline-block';
+                } else if(picks[key].newsLink) {
                     picks[key].newsLink.style.display = 'none';
                 }
             }
@@ -123,6 +128,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if(data.buyPrice) picks[data.faction].buyPrice.textContent = data.buyPrice;
             if(data.sellPrice) picks[data.faction].sellPrice.textContent = data.sellPrice;
             if(data.reason) picks[data.faction].reason.textContent = `이유: "${data.reason}"`;
+        }
+    });
+
+    socket.on('updatePrices', (livePicks) => {
+        for(let key in livePicks) {
+            if(picks[key] && livePicks[key].stockName && livePicks[key].symbol) {
+                picks[key].price.textContent = `${livePicks[key].currentPrice} (${livePicks[key].change})`;
+                picks[key].price.className = `stock-price ${livePicks[key].change.startsWith('-') ? 'down' : 'up'}`;
+            }
         }
     });
 
@@ -165,15 +179,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 const color = isProfit ? 'var(--up-color)' : 'var(--down-color)';
                 const aiName = r.ai === 'chatgpt' ? 'ChatGPT' : (r.ai === 'gemini' ? 'Gemini' : 'Claude');
                 
+                const reasonHtml = r.reason ? `<div style="margin-top: 8px; font-size: 0.8rem; color: #aaa; line-height: 1.3; font-weight: normal;"><i class="fa-solid fa-lightbulb" style="color:#ffd700;"></i> <b>추천사유:</b> ${r.reason}</div>` : '';
+                const lessonHtml = r.lessonLearned ? `<div style="margin-top: 4px; font-size: 0.8rem; color: #a8d5ff; line-height: 1.3; font-weight: normal;"><i class="fa-solid fa-magnifying-glass-chart" style="color:#00a3ff;"></i> <b>결과분석:</b> ${r.lessonLearned}</div>` : '';
+                
                 tr.innerHTML = `
-                    <td style="padding:12px 10px;">${r.date}</td>
-                    <td style="padding:12px 10px; font-weight:bold;" class="${r.ai}-text">${aiName}</td>
-                    <td style="padding:12px 10px;">${r.stockName}(${r.symbol})</td>
-                    <td style="padding:12px 10px;">${r.buyActual}</td>
-                    <td style="padding:12px 10px;">${r.sellActual}</td>
-                    <td style="padding:12px 10px; color:${color}; font-weight:bold;">${Math.round(r.profitAmount).toLocaleString()}₩</td>
-                    <td style="padding:12px 10px; color:${color};">${r.profitPercent}%</td>
-                    <td style="padding:12px 10px;">${r.hit ? '✅ 목표달성' : (isProfit ? '💰 익절청산' : '💀 손실청산')}</td>
+                    <td style="padding:12px 10px; vertical-align: top;">${r.date}</td>
+                    <td style="padding:12px 10px; font-weight:bold; vertical-align: top;" class="${r.ai}-text">${aiName}</td>
+                    <td style="padding:12px 10px; min-width: 300px; vertical-align: top;">
+                        <span style="font-weight:bold; font-size: 1.05rem;">${r.stockName}</span> <span style="font-size: 0.85rem; color: #888;">(${r.symbol})</span>
+                        ${reasonHtml}
+                        ${lessonHtml}
+                    </td>
+                    <td style="padding:12px 10px; vertical-align: top;">${Number(r.buyActual).toLocaleString()}</td>
+                    <td style="padding:12px 10px; vertical-align: top;">${Number(r.sellActual).toLocaleString()}</td>
+                    <td style="padding:12px 10px; color:${color}; font-weight:bold; vertical-align: top;">${Math.round(r.profitAmount).toLocaleString()}₩</td>
+                    <td style="padding:12px 10px; color:${color}; vertical-align: top;">${r.profitPercent}%</td>
+                    <td style="padding:12px 10px; vertical-align: top;">${r.hit ? '✅ 목표달성' : (isProfit ? '💰 종가익절' : '💀 종가손실')}</td>
                 `;
                 ledgerTbody.appendChild(tr);
             });

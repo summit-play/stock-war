@@ -343,21 +343,53 @@ Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON:
         const geminiP = extractJson(geminiRaw);
         const claudeP = extractJson(claudeRaw);
         
-        function processPick(aiKey, pickPayload) {
-            if(!pickPayload || !pickPayload.buyPrice || !pickPayload.sellPrice) return;
-            
-            const buyPriceRaw = parseFloat(String(pickPayload.buyPrice).replace(/,/g, ''));
-            const sellPriceRaw = parseFloat(String(pickPayload.sellPrice).replace(/,/g, ''));
-            
-            if (isNaN(buyPriceRaw) || buyPriceRaw <= 0 || isNaN(sellPriceRaw)) {
-                console.error(`Invalid Payload Prices for ${aiKey}:`, pickPayload);
+        async function processPick(aiKey, pickPayload) {
+            if(!pickPayload || !pickPayload.buyPrice || !pickPayload.sellPrice) {
+                db.picks[aiKey] = { symbol: '', stockName: '매매 대기', currentPrice: '0', change: '0%', buyPrice: '0', sellPrice: '0', reason: '엔진 응답 및 파싱 오류로 데이터 갱신 대기 중입니다.', achieved: false, market: null, shares: 0 };
                 return;
             }
+            
+            // STRICT MARKET VALIDATION to prevent cross-market exploit of the USD-to-KRW exchange rate 
+            if (market === 'KR' && (!pickPayload.symbol || !pickPayload.symbol.endsWith('.KS'))) {
+                db.picks[aiKey] = { symbol: '', stockName: '규정 위반 (한국장 이탈)', currentPrice: '0', change: '0%', buyPrice: '0', sellPrice: '0', reason: '국내장 세션에 미국/타국 종목을 제출하여 픽이 무효화되었습니다.', achieved: false, market: null, shares: 0 };
+                return;
+            }
+            if (market === 'US' && (!pickPayload.symbol || pickPayload.symbol.endsWith('.KS'))) {
+                db.picks[aiKey] = { symbol: '', stockName: '규정 위반 (미국장 이탈)', currentPrice: '0', change: '0%', buyPrice: '0', sellPrice: '0', reason: '해외장 세션에 국내 종목을 제출하여 픽이 무효화되었습니다.', achieved: false, market: null, shares: 0 };
+                return;
+            }
+            
+            let buyPriceRaw = parseFloat(String(pickPayload.buyPrice).replace(/,/g, ''));
+            const sellPriceRaw = parseFloat(String(pickPayload.sellPrice).replace(/,/g, ''));
+            
+            if (isNaN(buyPriceRaw) || buyPriceRaw <= 0 || isNaN(sellPriceRaw) || sellPriceRaw <= buyPriceRaw) {
+                console.error(`Invalid Payload Prices for ${aiKey}:`, pickPayload);
+                db.picks[aiKey] = { symbol: '', stockName: '매매 대기', currentPrice: '0', change: '0%', buyPrice: '0', sellPrice: '0', reason: '가격 산정 오류(목표가 미달)로 데이터 갱신 대기 중입니다.', achieved: false, market: null, shares: 0 };
+                return;
+            }
+            
+            // SECURITY FALLBACK: Prevent AI from cheating by hallucinating a tiny buy Price (e.g. 1 KRW) to get infinite shares
+            try {
+                const realData = market === 'US' ? await fetchFinnhubPrice(pickPayload.symbol) : await fetchNaverPrice(pickPayload.symbol);
+                if (realData && realData.regularMarketPrice > 0) {
+                    const realPrice = realData.regularMarketPrice;
+                    if (Math.abs(realPrice - buyPriceRaw) / realPrice > 0.1) {
+                        buyPriceRaw = realPrice; // Clamp to real price if AI lied by >10%
+                        pickPayload.buyPrice = realPrice.toLocaleString();
+                    }
+                }
+            } catch(e) {}
             
             const balance = db.scores[aiKey].balance || 0;
             let shareCostKRW = market === 'US' ? (buyPriceRaw * krwRate) : buyPriceRaw;
             let shares = shareCostKRW > 0 ? Math.floor(balance / shareCostKRW) : 0;
             let investedKRW = shares * shareCostKRW;
+            
+            // GHOST TRADING EXPLOIT PREVENT: Abort trade if the AI doesn't have enough money to buy at least 1 share
+            if (shares <= 0) {
+                db.picks[aiKey] = { symbol: '', stockName: '매수 실패 (잔고 부족)', currentPrice: '0', change: '0%', buyPrice: '0', sellPrice: '0', reason: `현재 잔고(${Math.floor(balance).toLocaleString()}₩)로는 1주(${Math.floor(shareCostKRW).toLocaleString()}₩)도 살 수 없어 이번 장을 패스합니다.`, achieved: false, market: null, shares: 0 };
+                return;
+            }
             
             db.picks[aiKey] = { 
                 ...pickPayload, 
@@ -367,9 +399,9 @@ Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON:
             db.scores[aiKey].total += 1;
         }
         
-        processPick('chatgpt', gptP);
-        processPick('gemini', geminiP);
-        processPick('claude', claudeP);
+        await processPick('chatgpt', gptP);
+        await processPick('gemini', geminiP);
+        await processPick('claude', claudeP);
         saveDb(db);
 
         io.emit('initData', { scores: db.scores, picks: db.picks, chatHistory: db.chatHistory.slice(-50) });
@@ -402,23 +434,34 @@ async function evaluateMarketClose(market) {
         if (!pick.symbol || pick.market !== market) continue;
         
         const buyRaw = pick.buyPriceRaw || 1;
-        const currentRaw = parseFloat(String(pick.currentPrice || "1").replace(/,/g, ''));
+        let currentRaw = parseFloat(String(pick.currentPrice || "1").replace(/,/g, ''));
         const sellRaw = parseFloat(String(pick.sellPrice || "0").replace(/,/g, ''));
+        
+        // Safety Fallback: fetch true final quote to avoid -100% loss bug on API failure/invalid symbol
+        try {
+            const finalQuote = market === 'US' ? await fetchFinnhubPrice(pick.symbol) : await fetchNaverPrice(pick.symbol);
+            if (finalQuote && finalQuote.regularMarketPrice > 0) {
+                currentRaw = finalQuote.regularMarketPrice;
+            } else if (currentRaw === 0 || isNaN(currentRaw)) {
+                currentRaw = buyRaw; // Protect capital (0% return) if ticker is completely broken
+            }
+        } catch(e) {}
+
         
         let finalAchieved = pick.achieved;
         let profitAmt = 0;
         let profitPercent = 0;
         
         if (finalAchieved) {
-            profitAmt = (sellRaw - buyRaw) * pick.shares * krwRate;
+            profitAmt = pick.realizedProfit !== undefined ? pick.realizedProfit : ((sellRaw - buyRaw) * pick.shares * krwRate);
             profitPercent = ((sellRaw - buyRaw) / buyRaw) * 100;
+            // Note: totalReturn is already incremented in pollTickers when the target is hit.
         } else {
             profitAmt = (currentRaw - buyRaw) * pick.shares * krwRate;
             profitPercent = ((currentRaw - buyRaw) / buyRaw) * 100;
             db.scores[f.key].balance += profitAmt; // Apply the floating PnL natively to balance at close
+            db.scores[f.key].totalReturn = parseFloat((db.scores[f.key].totalReturn + profitPercent).toFixed(2));
         }
-        
-        db.scores[f.key].totalReturn = parseFloat((db.scores[f.key].totalReturn + profitPercent).toFixed(2));
         
         // Add to Ledger
         db.scores[f.key].ledger.unshift({
@@ -431,7 +474,8 @@ async function evaluateMarketClose(market) {
             sellActual: finalAchieved ? sellRaw : currentRaw,
             profitAmount: profitAmt,
             profitPercent: profitPercent.toFixed(2),
-            hit: finalAchieved
+            hit: finalAchieved,
+            reason: pick.reason
         });
         if(db.scores[f.key].ledger.length > 50) db.scores[f.key].ledger.pop();
         
@@ -461,12 +505,18 @@ async function evaluateMarketClose(market) {
             else if (f.key === 'claude') resTxt = await callClaude(prompt);
             
             db.scores[f.key].lessonLearned = resTxt;
+            if (db.scores[f.key].ledger.length > 0) {
+                db.scores[f.key].ledger[0].lessonLearned = resTxt;
+            }
             
             setTimeout(() => {
                 let msg = `[${f.name} 일일 정산] ${pick.stockName} 투자로 ${Math.round(profitAmt).toLocaleString()}₩ ${profitAmt >= 0 ? '수익 스윕 💸' : '손실 폭격 💀'}`;
                 broadcastChat(f.key, f.name, msg);
             }, 8000 + (Math.random() * 3000));
         } catch(e) { console.error("Evaluate Error:", e.name); }
+        
+        // Prevent this pick from being evaluated again
+        db.picks[f.key].market = null;
     }
     
     saveDb(db);
@@ -501,7 +551,7 @@ async function triggerLiveBanter() {
     const pick = db.picks[randomAI.key];
     if(!pick.symbol) return;
 
-    const prompt = `${realContext}\n\n[워존 라이브 채팅 지시]\n당신은 현재 주식 토론방에 참가중인 인공지능입니다. 방금 가져온 실시간 가격과 최신 뉴스를 읽으세요.\n당신의 오늘 픽은 ${pick.stockName} (현재가 ${pick.currentPrice}) 입니다.\n주가가 하락 중이라면 변명하거나 남을 비웃고, 오르고 있다면 뉴스를 인용하며 엄청나게 오만하게 자랑하세요. 단 1~2문장의 짧고 굵은 한국어 구어체로 채팅을 작성하십시오!`;
+    const prompt = `${realContext}\n\n[워존 라이브 채팅 지시]\n당신은 주식 토론방에 참가중인 인공지능 펀드매니저입니다. 방금 제공된 실시간 거시 경제 뉴스나 시장 상황을 읽고 분석하세요.\n당신의 픽은 ${pick.stockName} (현재가 ${pick.currentPrice}) 입니다.\n주가가 상승/하락 하는 이유를 제공된 최신 뉴스나 거시 경제 상황과 명확히 결합해 구체적이고 전문적으로 분석하세요.\n그 분석을 토대로 하락 중이라면 시장을 탓하며 치졸하게 변명하고, 오르고 있다면 자신의 통찰력을 오만하게 자랑하세요. 단 2~3문장의 짧고 타격감 있는 한국어 인터넷 커뮤니티 구어체로 작성하십시오!`;
 
     try {
         const chatTxt = await randomAI.callFn(prompt);
@@ -539,6 +589,8 @@ async function pollTickers(filterFn, fetchFn) {
         const db = getDb();
         let changed = false;
         
+        let scoreChanged = false;
+        
         for (const u of updates) {
             const key = u.key;
             const quote = u.quote;
@@ -558,11 +610,13 @@ async function pollTickers(filterFn, fetchFn) {
                     
                     if (!pick.achieved && sellRaw > 0 && rPrice >= sellRaw && pick.market) {
                         pick.achieved = true;
+                        scoreChanged = true;
                         db.scores[key].hit += 1;
                         
                         const localKrwRate = pick.market === 'US' ? krwRate : 1;
                         const profitAmt = (sellRaw - buyRaw) * (pick.shares || 0) * localKrwRate;
                         db.scores[key].balance += profitAmt;
+                        pick.realizedProfit = profitAmt; // Lock exact profit for the ledger
                         
                         const profitPct = ((sellRaw - buyRaw) / buyRaw) * 100;
                         db.scores[key].totalReturn = parseFloat((db.scores[key].totalReturn + profitPct).toFixed(2));
@@ -579,7 +633,9 @@ async function pollTickers(filterFn, fetchFn) {
         if(changed) {
             saveDb(db);
             io.emit('updatePrices', db.picks);
-            io.emit('initData', { scores: db.scores, picks: db.picks, chatHistory: db.chatHistory.slice(-50) });
+            if (scoreChanged) {
+                io.emit('initData', { scores: db.scores, picks: db.picks, chatHistory: db.chatHistory.slice(-50) });
+            }
         }
     }
 }
