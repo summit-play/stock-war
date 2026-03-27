@@ -241,6 +241,8 @@ io.on('connection', (socket) => {
 // JSON extraction
 function extractJson(text) {
     try {
+        try { return JSON.parse(text.trim()); } catch (e) {}
+        
         const mdMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/i);
         if (mdMatch) return JSON.parse(mdMatch[1]);
         
@@ -277,7 +279,9 @@ async function getGeminiModelString() {
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
         const data = await res.json();
         const validModels = data.models.filter(m => m.supportedGenerationMethods?.includes('generateContent') && m.name.includes('gemini'));
+        if (!validModels || validModels.length === 0) return 'gemini-1.5-flash-latest';
         const target = validModels.find(m => m.name.includes('gemini-2.5-flash')) || validModels.find(m => m.name.includes('gemini-2.0-flash')) || validModels.find(m => m.name.includes('gemini-1.5')) || validModels[0];
+        if (!target) return 'gemini-1.5-flash-latest';
         geminiModelString = target.name.replace('models/', '');
         return geminiModelString;
     } catch(e) { return 'gemini-1.5-flash-latest'; }
@@ -287,7 +291,7 @@ async function callGemini(prompt) {
     const modelStr = await getGeminiModelString();
     const model = genAI.getGenerativeModel({
         model: modelStr,
-        generationConfig: { maxOutputTokens: 1500 },
+        generationConfig: { maxOutputTokens: 1500, responseMimeType: "application/json" },
         safetySettings: [
             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -359,9 +363,10 @@ Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON:
         const geminiP = extractJson(geminiRaw);
         const claudeP = extractJson(claudeRaw);
         
-        async function processPick(aiKey, pickPayload) {
+        async function processPick(aiKey, pickPayload, rawResponse) {
             if(!pickPayload || !pickPayload.buyPrice || !pickPayload.sellPrice) {
-                db.picks[aiKey] = { symbol: '', stockName: '매매 대기', currentPrice: '0', change: '0%', buyPrice: '0', sellPrice: '0', reason: '엔진 응답 및 파싱 오류로 데이터 갱신 대기 중입니다.', achieved: false, market: null, shares: 0, status: '오류' };
+                const snippet = (rawResponse || "Empty Response").replace(/</g,"&lt;").substring(0,250);
+                db.picks[aiKey] = { symbol: '', stockName: '매매 대기', currentPrice: '0', change: '0%', buyPrice: '0', sellPrice: '0', reason: `[파싱 오류] 엔진 원본 응답:\n${snippet}`, achieved: false, market: null, shares: 0, status: '오류' };
                 return;
             }
             
@@ -392,9 +397,9 @@ Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON:
             };
         }
         
-        await processPick('chatgpt', gptP);
-        await processPick('gemini', geminiP);
-        await processPick('claude', claudeP);
+        await processPick('chatgpt', gptP, gptRaw);
+        await processPick('gemini', geminiP, geminiRaw);
+        await processPick('claude', claudeP, claudeRaw);
         saveDb(db);
 
         io.emit('initData', { scores: db.scores, picks: db.picks, chatHistory: db.chatHistory.slice(-50) });
