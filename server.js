@@ -241,9 +241,21 @@ io.on('connection', (socket) => {
 // JSON extraction
 function extractJson(text) {
     try {
-        let cleanText = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-        const match = cleanText.match(/\{[\s\S]*\}/);
-        return match ? JSON.parse(match[0]) : null;
+        const mdMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/i);
+        if (mdMatch) return JSON.parse(mdMatch[1]);
+        
+        const start = text.indexOf('{');
+        if (start === -1) return null;
+        
+        let depth = 0;
+        for (let i = start; i < text.length; i++) {
+            if (text[i] === '{') depth++;
+            else if (text[i] === '}') {
+                depth--;
+                if (depth === 0) return JSON.parse(text.substring(start, i + 1));
+            }
+        }
+        return null;
     } catch(e) { return null; }
 }
 
