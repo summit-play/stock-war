@@ -275,10 +275,7 @@ async function callGemini(prompt) {
     const modelStr = await getGeminiModelString();
     const model = genAI.getGenerativeModel({
         model: modelStr,
-        generationConfig: { 
-            maxOutputTokens: 1500,
-            responseMimeType: "application/json"
-        }
+        generationConfig: { maxOutputTokens: 1500 }
     });
     const res = await model.generateContent(prompt);
     return res.response.text();
