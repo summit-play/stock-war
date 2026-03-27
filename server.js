@@ -329,18 +329,25 @@ Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON:
     const geminiBal = (db.scores.gemini.balance || 0).toLocaleString();
     const claudeBal = (db.scores.claude.balance || 0).toLocaleString();
 
-    const gptPrompt = basePrompt.replace('[CURRENT_BALANCE]', gptBal) + `\n\n[당신의 고유 투자 철학]: 당신은 매우 **공격적인 모멘텀 투자자(Momentum)**입니다. 현재 시장에서 가장 뜨겁고 변동성이 큰 주도주에 과감하게 배팅하세요.\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.chatgpt.lessonLearned || '없음'}\n이 철학과 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
-    const geminiPrompt = basePrompt.replace('[CURRENT_BALANCE]', geminiBal) + `\n\n[당신의 고유 투자 철학]: 당신은 기업의 내재가치를 중시하는 **가치 투자자(Value)**입니다. 뉴스를 분석하여 현재 저평가되었거나 펀더멘털이 가장 튼튼한 묵직한 우량주를 골라내세요.\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.gemini.lessonLearned || '없음'}\n이 철학과 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
-    const claudePrompt = basePrompt.replace('[CURRENT_BALANCE]', claudeBal) + `\n\n[당신의 고유 투자 철학]: 당신은 남들과 반대로 움직이는 **역발상 투자자(Contrarian)**입니다. 시장이 열광하는 뻔한 주도주를 피하고, 과도하게 소외되었거나 방어력이 뛰어난 종목을 발굴하세요.\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.claude.lessonLearned || '없음'}\n이 철학과 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
-
     try {
         let gptRaw = "", geminiRaw = "", claudeRaw = "";
-        try { gptRaw = await callChatGPT(gptPrompt); } catch(e) { console.error("GPT Error", e.message); }
-        try { geminiRaw = await callGemini(geminiPrompt); } catch(e) { console.error("Gemini Error", e.message); }
-        try { claudeRaw = await callClaude(claudePrompt); } catch(e) { console.error("Claude Error", e.message); }
         
+        const gptPrompt = basePrompt.replace('[CURRENT_BALANCE]', gptBal) + `\n\n[당신의 고유 투자 철학]: 당신은 매우 **공격적인 모멘텀 투자자(Momentum)**입니다. 현재 시장에서 가장 뜨겁고 변동성이 큰 주도주에 과감하게 배팅하세요.\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.chatgpt.lessonLearned || '없음'}\n이 철학과 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.`;
+        try { gptRaw = await callChatGPT(gptPrompt); } catch(e) { console.error("GPT Error", e.message); }
         const gptP = extractJson(gptRaw);
+        
+        let geminiExclusion = gptP && gptP.stockName ? `\n[🚨엄격한 금지 규칙]: 경쟁자 ChatGPT가 이미 '${gptP.stockName}(${gptP.symbol})'을(를) 선점했습니다! 포트폴리오 다각화를 위해 당신은 절대 이 종목을 중복 추천해서는 안 됩니다. 무조건 다른 종목을 찾으세요!` : "";
+        const geminiPrompt = basePrompt.replace('[CURRENT_BALANCE]', geminiBal) + `\n\n[당신의 고유 투자 철학]: 당신은 기업의 내재가치를 중시하는 **가치 투자자(Value)**입니다. 뉴스를 분석하여 현재 저평가되었거나 펀더멘털이 가장 튼튼한 묵직한 우량주를 골라내세요.\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.gemini.lessonLearned || '없음'}\n이 철학과 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.` + geminiExclusion;
+        try { geminiRaw = await callGemini(geminiPrompt); } catch(e) { console.error("Gemini Error", e.message); }
         const geminiP = extractJson(geminiRaw);
+        
+        let claudeExclusion = "";
+        const exclusions = [gptP?.stockName, geminiP?.stockName].filter(x => x);
+        if (exclusions.length > 0) {
+            claudeExclusion = `\n[🚨엄격한 금지 규칙]: 경쟁자인 ChatGPT와 Gemini가 이미 [${exclusions.join(', ')}] 종목을 선점했습니다! 당신은 역발상 투자자로서 절대 저들이 고른 종목을 따라 사면 안 됩니다. 무조건 완전히 새로운 종목을 발굴하세요!`;
+        }
+        const claudePrompt = basePrompt.replace('[CURRENT_BALANCE]', claudeBal) + `\n\n[당신의 고유 투자 철학]: 당신은 남들과 반대로 움직이는 **역발상 투자자(Contrarian)**입니다. 시장이 열광하는 뻔한 주도주를 피하고, 과도하게 소외되었거나 방어력이 뛰어난 종목을 발굴하세요.\n[당신의 어제 오답노트 및 진화지침]: ${db.scores.claude.lessonLearned || '없음'}\n이 철학과 지침을 철저히 반영하여 오늘 완벽한 픽을 제안하세요.` + claudeExclusion;
+        try { claudeRaw = await callClaude(claudePrompt); } catch(e) { console.error("Claude Error", e.message); }
         const claudeP = extractJson(claudeRaw);
         
         async function processPick(aiKey, pickPayload) {
