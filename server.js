@@ -249,7 +249,12 @@ function extractJson(text) {
 
 // AI API Callers
 async function callChatGPT(prompt) {
-    const res = await openai.chat.completions.create({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }], max_tokens: 1500 });
+    const res = await openai.chat.completions.create({ 
+        model: 'gpt-4o-mini', 
+        messages: [{ role: 'user', content: prompt }], 
+        max_tokens: 1500,
+        response_format: { type: "json_object" }
+    });
     return res.choices[0].message.content;
 }
 
@@ -270,7 +275,10 @@ async function callGemini(prompt) {
     const modelStr = await getGeminiModelString();
     const model = genAI.getGenerativeModel({
         model: modelStr,
-        generationConfig: { maxOutputTokens: 1500 }
+        generationConfig: { 
+            maxOutputTokens: 1500,
+            responseMimeType: "application/json"
+        }
     });
     const res = await model.generateContent(prompt);
     return res.response.text();
@@ -314,8 +322,8 @@ Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON:
 {"symbol": "${market === 'KR'?'005930.KS':'AAPL'}", "stockName": "Apple", "buyPrice": "150.50", "sellPrice": "155.00", "reason": "Detailed reason here.", "newsLink": "https://news.url.here"}
 
 [CRITICAL RULE]: 
-1. The "symbol" MUST be the exact official ticker. For US, like AAPL or TSLA. For KR, it MUST be the 6-digit code followed by .KS (e.g. 005930.KS). If you output a wrong symbol, the system crashes!
-2. For buyPrice and sellPrice, you MUST return purely numerical digits (e.g. 185000 for KRW, 150.50 for USD). NEVER USE COMMAS (,). NEVER USE SYMBOLS.
+1. The "symbol" MUST be the exact official ticker. ${market === 'KR' ? 'You are trading in KOREA. You MUST pick a 6-digit KR code followed by .KS (e.g., 005930.KS, 000660.KS). Do NOT pick US companies like AAPL.' : 'You are trading in the US. You MUST pick a valid US ticker like AAPL, TSLA, NVDA. Do NOT add .KS and do NOT pick Korean companies.'} If you output a wrong symbol, the system crashes!
+2. For buyPrice and sellPrice, you MUST return purely numerical digits (e.g. ${market==='KR'?'185000':'150.50'}). NEVER USE COMMAS (,). NEVER USE SYMBOLS.
 `;
 
     const gptBal = (db.scores.chatgpt.balance || 0).toLocaleString();
