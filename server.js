@@ -93,7 +93,7 @@ async function fetchFinnhubPrice(symbol) {
 
 // AI SDKs
 import OpenAI from 'openai';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
 
 dotenv.config();
@@ -291,7 +291,22 @@ async function callGemini(prompt) {
     const modelStr = await getGeminiModelString();
     const model = genAI.getGenerativeModel({
         model: modelStr,
-        generationConfig: { maxOutputTokens: 1500, responseMimeType: "application/json" },
+        generationConfig: { 
+            maxOutputTokens: 1500, 
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    symbol: { type: SchemaType.STRING },
+                    stockName: { type: SchemaType.STRING },
+                    buyPrice: { type: SchemaType.STRING },
+                    sellPrice: { type: SchemaType.STRING },
+                    reason: { type: SchemaType.STRING },
+                    newsLink: { type: SchemaType.STRING }
+                },
+                required: ["symbol", "stockName", "buyPrice", "sellPrice", "reason", "newsLink"]
+            }
+        },
         safetySettings: [
             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
