@@ -9,31 +9,10 @@ document.addEventListener('DOMContentLoaded', () => {
         claude: document.querySelector('.claude-score')
     };
 
-    const picks = {
-        chatgpt: {
-            name: document.querySelector('.chatgpt-text').nextElementSibling.querySelector('.stock-name'),
-            price: document.querySelector('.chatgpt-text').nextElementSibling.querySelector('.stock-price'),
-            buyPrice: document.querySelector('.chatgpt-text').parentNode.querySelector('.buy-price'),
-            sellPrice: document.querySelector('.chatgpt-text').parentNode.querySelector('.sell-price'),
-            reason: document.querySelector('.chatgpt-text').parentNode.querySelector('.stock-reason'),
-            newsLink: document.querySelector('.chatgpt-text').parentNode.querySelector('.news-link')
-        },
-        gemini: {
-            name: document.querySelector('.gemini-text').nextElementSibling.querySelector('.stock-name'),
-            price: document.querySelector('.gemini-text').nextElementSibling.querySelector('.stock-price'),
-            buyPrice: document.querySelector('.gemini-text').parentNode.querySelector('.buy-price'),
-            sellPrice: document.querySelector('.gemini-text').parentNode.querySelector('.sell-price'),
-            reason: document.querySelector('.gemini-text').parentNode.querySelector('.stock-reason'),
-            newsLink: document.querySelector('.gemini-text').parentNode.querySelector('.news-link')
-        },
-        claude: {
-            name: document.querySelector('.claude-text').nextElementSibling.querySelector('.stock-name'),
-            price: document.querySelector('.claude-text').nextElementSibling.querySelector('.stock-price'),
-            buyPrice: document.querySelector('.claude-text').parentNode.querySelector('.buy-price'),
-            sellPrice: document.querySelector('.claude-text').parentNode.querySelector('.sell-price'),
-            reason: document.querySelector('.claude-text').parentNode.querySelector('.stock-reason'),
-            newsLink: document.querySelector('.claude-text').parentNode.querySelector('.news-link')
-        }
+    const picksBoxes = {
+        chatgpt: document.querySelectorAll('.ticker-box')[0],
+        gemini: document.querySelectorAll('.ticker-box')[1],
+        claude: document.querySelectorAll('.ticker-box')[2]
     };
     
     function addMessage(chat) {
@@ -71,6 +50,87 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     }
 
+    function renderPicks(picks) {
+        for(let key in picks) {
+            const p = picks[key];
+            const box = picksBoxes[key];
+            if(!box || !p.symbol) continue;
+            
+            let newsHref = "#";
+            if(p.symbol && p.symbol.endsWith('.KS')) newsHref = `https://finance.naver.com/item/news.naver?code=${p.symbol.replace('.KS', '')}`;
+            else newsHref = `https://finance.yahoo.com/quote/${p.symbol}/news`;
+            const newsHtml = p.symbol ? `<a href="${newsHref}" target="_blank" style="display: block; margin-top: 15px; color: var(--color-${key}); font-size: 0.85rem; text-decoration: none; font-weight: bold; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 6px; text-align: center; transition: 0.2s;"><i class="fa-solid fa-newspaper"></i> 관련 핵심 뉴스 보기</a>` : '';
+            
+            let contentHTML = '';
+            
+            if (p.status === '대기중') {
+                contentHTML = `
+                    <div class="ticker-header ${key}-text">${key.toUpperCase()} Pick</div>
+                    <div style="text-align:center; padding: 5px; margin-bottom: 10px; background:#444; border-radius:4px; font-size:0.85rem; font-weight:bold; color:#ccc;">⏳ 개장/체결 대기중</div>
+                    <div class="stock-info" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span class="stock-name" style="font-size: 1.2rem; font-weight:bold;">${p.stockName} <span style="font-size:0.9rem;color:#888;font-weight:normal;">(${p.symbol})</span></span>
+                    </div>
+                    <div class="stock-targets" style="display:flex; justify-content:space-between; margin-top:15px; margin-bottom:15px;">
+                        <div class="target buy" style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; width:48%; text-align:center;">
+                            <span style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:5px;">AI 픽: 예측 시작가</span>
+                            <strong style="font-size:1.1rem; color:#fff;">${p.buyPrice}</strong>
+                        </div>
+                        <div class="target sell" style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; width:48%; text-align:center;">
+                            <span style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:5px;">목표 매도가</span>
+                            <strong style="font-size:1.1rem; color:#fff;">${p.sellPrice}</strong>
+                        </div>
+                    </div>
+                    <div class="stock-reason" style="font-size:0.9rem; line-height:1.4; color:#bbb; border-left: 3px solid #666; padding-left:10px;">💡 핵심 사유: "${p.reason || ''}"</div>
+                    ${newsHtml}
+                `;
+            } else if (p.status === '진행중') {
+                contentHTML = `
+                    <div class="ticker-header ${key}-text">${key.toUpperCase()} Pick</div>
+                    <div style="text-align:center; padding: 5px; margin-bottom: 10px; background:rgba(0, 229, 255, 0.1); color:#00e5ff; border: 1px solid rgba(0,229,255,0.3); border-radius:4px; font-size:0.85rem; font-weight:bold; animation: pulse 2s infinite;">🔥 실시간 매매 진행중</div>
+                    <div class="stock-info" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span class="stock-name" style="font-size: 1.2rem; font-weight:bold;">${p.stockName} <span style="font-size:0.9rem;color:#888;font-weight:normal;">(${p.symbol})</span></span>
+                        <span class="stock-price ${p.change.startsWith('-') ? 'down' : 'up'}" style="font-weight:bold; font-size:1.1rem;">${p.currentPrice} (${p.change})</span>
+                    </div>
+                    <div class="stock-targets" style="display:flex; justify-content:space-between; margin-top:15px; margin-bottom:15px;">
+                        <div class="target buy" style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; width:48%; text-align:center;">
+                            <span style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:5px;">체결된 실제 시작가</span>
+                            <strong style="font-size:1.1rem; color:#fff;">${Number(p.buyPriceRaw).toLocaleString()}</strong>
+                        </div>
+                        <div class="target sell" style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; width:48%; text-align:center;">
+                            <span style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:5px;">목표 매도가</span>
+                            <strong style="font-size:1.1rem; color:#fff;">${p.sellPrice}</strong>
+                        </div>
+                    </div>
+                    <div class="stock-reason" style="font-size:0.9rem; line-height:1.4; color:#bbb; border-left: 3px solid #666; padding-left:10px;">💡 핵심 사유: "${p.reason || ''}"</div>
+                    ${newsHtml}
+                `;
+            } else if (p.status === '마감') {
+                const isProfit = Number(p.finalProfitAmt) >= 0;
+                const pColor = isProfit ? 'var(--up-color)' : 'var(--down-color)';
+                const sign = isProfit ? '+' : '';
+                contentHTML = `
+                    <div class="ticker-header ${key}-text">${key.toUpperCase()} Result</div>
+                    <div style="text-align:center; padding: 5px; margin-bottom: 10px; background:#2a2a3e; border: 1px solid #445; color:#a8d5ff; border-radius:4px; font-size:0.85rem; font-weight:bold;">🏁 장 마감 결과 및 정산</div>
+                    <div class="stock-info" style="text-align:center; padding-bottom:10px; border-bottom: 1px solid #333;">
+                        <span class="stock-name" style="font-size: 1.3rem; font-weight:bold;">${p.stockName} <span style="font-size:0.9rem;color:#888;font-weight:normal;">(${p.symbol})</span></span>
+                    </div>
+                    <div style="margin: 15px 0; background:rgba(0,0,0,0.3); padding:15px; border-radius:8px; text-align:center;">
+                        <div style="font-size:1.4rem; font-weight:bold; color:${pColor};">${sign}${Math.round(p.finalProfitAmt).toLocaleString()}₩</div>
+                        <div style="font-size:1rem; font-weight:bold; color:${pColor}; margin-top:5px;">${sign}${p.finalProfitPercent}%</div>
+                        <div style="font-size:0.9rem; color:#ccc; margin-top:8px;">${p.achieved ? '✅ 목표도달 조기익절' : (isProfit ? '💰 종가 기준 익절청산' : '💀 종가 기준 손실청산')}</div>
+                    </div>
+                    <div class="stock-lesson" style="font-size: 0.9rem; color:#a8d5ff; line-height: 1.4; border-left: 3px solid #00a3ff; padding-left: 10px; background: rgba(0,163,255,0.05); padding: 10px; border-radius: 6px;">
+                        <strong>🔍 AI 결과 분석:</strong><br>${p.lessonLearned || '분석 중...'}
+                    </div>
+                `;
+            } else {
+                contentHTML = `<div style="padding: 20px; text-align: center; color: #888;">데이터 대기 중...</div>`;
+            }
+            
+            box.innerHTML = contentHTML;
+        }
+    }
+
     let globalScores = null;
 
     socket.on('initData', (data) => {
@@ -80,28 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderScore(key, data.scores[key]);
         }
         
-        // Update picks
-        for(let key in data.picks) {
-            if(picks[key] && data.picks[key].stockName) {
-                picks[key].name.textContent = data.picks[key].stockName;
-                picks[key].price.textContent = `${data.picks[key].currentPrice} (${data.picks[key].change})`;
-                picks[key].price.className = `stock-price ${data.picks[key].change.startsWith('-') ? 'down' : 'up'}`;
-                if(data.picks[key].buyPrice) picks[key].buyPrice.textContent = data.picks[key].buyPrice;
-                if(data.picks[key].sellPrice) picks[key].sellPrice.textContent = data.picks[key].sellPrice;
-                if(data.picks[key].reason) picks[key].reason.textContent = `이유: "${data.picks[key].reason}"`;
-                if(data.picks[key].symbol && picks[key].newsLink) {
-                    const sym = data.picks[key].symbol;
-                    if(sym.endsWith('.KS')) {
-                        picks[key].newsLink.href = `https://finance.naver.com/item/news.naver?code=${sym.replace('.KS', '')}`;
-                    } else {
-                        picks[key].newsLink.href = `https://finance.yahoo.com/quote/${sym}/news`;
-                    }
-                    picks[key].newsLink.style.display = 'inline-block';
-                } else if(picks[key].newsLink) {
-                    picks[key].newsLink.style.display = 'none';
-                }
-            }
-        }
+        renderPicks(data.picks);
 
         // Render history
         chatContainer.innerHTML = '';
@@ -121,23 +160,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('updatePick', (data) => {
-        if(picks[data.faction]) {
-            picks[data.faction].name.textContent = data.stockName;
-            picks[data.faction].price.textContent = `${data.currentPrice} (${data.change})`;
-            picks[data.faction].price.className = `stock-price ${data.change.startsWith('-') ? 'down' : 'up'}`;
-            if(data.buyPrice) picks[data.faction].buyPrice.textContent = data.buyPrice;
-            if(data.sellPrice) picks[data.faction].sellPrice.textContent = data.sellPrice;
-            if(data.reason) picks[data.faction].reason.textContent = `이유: "${data.reason}"`;
-        }
+        // No longer used, but kept for fallback compatibility
     });
 
     socket.on('updatePrices', (livePicks) => {
-        for(let key in livePicks) {
-            if(picks[key] && livePicks[key].stockName && livePicks[key].symbol) {
-                picks[key].price.textContent = `${livePicks[key].currentPrice} (${livePicks[key].change})`;
-                picks[key].price.className = `stock-price ${livePicks[key].change.startsWith('-') ? 'down' : 'up'}`;
-            }
-        }
+        renderPicks(livePicks);
     });
 
     // Random visual fluctuation for un-updated sockets
