@@ -56,15 +56,14 @@ async function fetchYahooPrice(symbol) {
 
 async function fetchMacroNews(market) {
     try {
-        const query = market === 'US' ? '^GSPC' : '^KS11';
-        const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${query}&newsCount=10`);
+        const query = market === 'KR' ? '경제 OR 정치 OR 주식 OR 산업' : 'Economy OR Politics OR "Stock Market" OR Technology OR Policy';
+        const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&language=${market === 'KR'?'ko':'en'}&pageSize=50&apiKey=${process.env.NEWS_API_KEY}`;
+        const res = await fetch(url);
         const data = await res.json();
-        const newsList = data.news?.slice(0, 10) || [];
-        if (newsList.length > 0) {
-            return newsList.map(n => `- [${n.publisher}] ${n.title} (링크: ${n.link})`).join('\n');
-        }
-        return "관련 매크로 뉴스가 없습니다.";
-    } catch(e) { return "관련 매크로 뉴스가 없습니다."; }
+        return data.articles || [];
+    } catch(e) {
+        return [];
+    }
 }
 
 async function fetchExchangeRate() {
@@ -122,29 +121,19 @@ const SYMBOLS = {
 };
 
 async function getMarketContext(market) {
-    const list = market === 'KR' ? KR_ARRAY : US_ARRAY;
-    try {
-        console.log("getMarketContext: Fetching quotes and news for", list.length, "symbols...");
-        
-        const quotesPromises = list.map(sym => market === 'US' ? fetchFinnhubPrice(sym) : fetchNaverPrice(sym));
-        const quotesRaw = await Promise.all(quotesPromises);
-        const quotes = quotesRaw.filter(q => q);
-        
-        // Fetch Top 10 Macro News for the market
-        const macroNewsTxt = await fetchMacroNews(market);
-        
-        console.log("getMarketContext: Fetched successfully.");
-        let ctx = "📊 [현재 핵심 기업들 실시간 주가 등락]\n";
-        for (const q of quotes) {
-            ctx += `- [${q.symbol}] 현재가: ${q.regularMarketPrice}, 일일변동률: ${q.regularMarketChangePercent?.toFixed(2)}%\n`;
-        }
-        
-        ctx += `\n📰 [실시간 거시 경제/정치 주요 뉴스 10선 (자유 종목 발굴용)]\n${macroNewsTxt}\n`;
-        return ctx;
-    } catch(e) { 
-        console.error("getMarketContext Error:", e.message);
-        return "데이터를 가져올 수 없음."; 
+    const news = await fetchMacroNews(market);
+    
+    let ctx = `📰 [최신 정치/경제 및 시장 주요 뉴스 (총 ${news.length > 0 ? news.length : 50}개)]\n`;
+    ctx += "이 뉴스들을 깊이 있게 스터디(Study)하여 현재 어느 섹터나 테마 주식이 오를지 분석하십시오.\n\n";
+    
+    if (news && news.length > 0) {
+        news.forEach((n, i) => {
+            ctx += `${i+1}. [${n.title}] - ${n.description || ''}\n`;
+        });
+    } else {
+        ctx += "현재 뉴스 파싱을 대기 중입니다.\n";
     }
+    return ctx;
 }
 
 // MongoDB Schema & Database Init
@@ -314,9 +303,10 @@ async function generateDailyPicks(market) {
     const krwRate = market === 'US' ? await fetchExchangeRate() : 1;
 
     const basePrompt = `${realContext}\n\nYou are a highly professional Wall Street analyst managing a virtual hedge fund.
-Based EXACTLY on the real-time macroeconomic and political news provided above, you must freely pick ONE stock from the ENTIRE ${market === 'KR'?'Korean (KOSPI/KOSDAQ)':'US (NYSE/NASDAQ)'} market that will rise the most today.
+[STEP 1]: Study the massive political and economic news headlines provided above. Analyze which industry sector or theme will rise today based on this macro environment.
+[STEP 2]: Based on your analysis, freely pick ONE EXACT stock from the ENTIRE ${market === 'KR'?'Korean (KOSPI/KOSDAQ)':'US (NYSE/NASDAQ)'} market that best fits this booming sector.
 Your current account balance is: [CURRENT_BALANCE] KRW.
-Provide a suggested buy target price (near current) and sell target price. Provide a highly analytical reason (3 sentences max in Korean) packed with actual numbers.
+Provide a suggested buy target price (near current) and sell target price. Provide a highly analytical reason (3 sentences max in Korean) explaining YOUR macro analysis and why this specific stock was chosen.
 Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON: 
 {"symbol": "${market === 'KR'?'005930.KS':'AAPL'}", "stockName": "Apple", "buyPrice": "150.50", "sellPrice": "155.00", "reason": "Detailed reason here.", "newsLink": "https://news.url.here"}
 
