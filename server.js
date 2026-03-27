@@ -424,6 +424,10 @@ async function executeMarketOpen(market) {
                         db.scores[f.key].total += 1;
                     }
                     anyExecuted = true;
+                } else {
+                    pick.status = '오류';
+                    pick.reason = '시장 시작가 데이터를 찾을 수 없는 가상/상장폐지 티커입니다. 다음 사이클까지 대기합니다.';
+                    anyExecuted = true;
                 }
             } catch(e) {}
         }
