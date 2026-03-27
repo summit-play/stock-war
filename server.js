@@ -554,8 +554,10 @@ async function triggerLiveBanter() {
     if (isGenerating) return;
     
     const now = new Date();
-    const h = now.getHours();
-    const m = now.getMinutes();
+    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const kstDate = new Date(utcTime + (9 * 60 * 60000));
+    const h = kstDate.getHours();
+    const m = kstDate.getMinutes();
     const isKROpen = (h > 9 || (h === 9 && m >= 0)) && (h < 15 || (h === 15 && m <= 30));
     const isUSOpen = (h > 23 || (h === 23 && m >= 30)) || (h < 5);
     
@@ -583,17 +585,18 @@ async function triggerLiveBanter() {
     } catch(e) {}
 }
 
-// Scheduling
-cron.schedule('0 6 * * *', () => generateDailyPicks('KR'));
-cron.schedule('0 9 * * *', () => executeMarketOpen('KR'));
-cron.schedule('30 15 * * *', () => evaluateMarketClose('KR'));
+// Scheduling (Hardcoded to KST Timezone to prevent UTC server mismatch)
+const tz = { timezone: 'Asia/Seoul' };
+cron.schedule('0 6 * * *', () => generateDailyPicks('KR'), tz);
+cron.schedule('0 9 * * *', () => executeMarketOpen('KR'), tz);
+cron.schedule('30 15 * * *', () => evaluateMarketClose('KR'), tz);
 
-cron.schedule('0 16 * * *', () => generateDailyPicks('US'));
-cron.schedule('30 23 * * *', () => executeMarketOpen('US'));
-cron.schedule('0 5 * * *', () => evaluateMarketClose('US'));
+cron.schedule('0 16 * * *', () => generateDailyPicks('US'), tz);
+cron.schedule('30 23 * * *', () => executeMarketOpen('US'), tz);
+cron.schedule('0 5 * * *', () => evaluateMarketClose('US'), tz);
 
 // Live Warzone Banter (Every 15 Minutes)
-cron.schedule('*/15 * * * *', () => triggerLiveBanter());
+cron.schedule('*/15 * * * *', () => triggerLiveBanter(), tz);
 
 // Unified Poller Function
 async function pollTickers(filterFn, fetchFn) {
