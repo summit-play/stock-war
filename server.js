@@ -303,7 +303,6 @@ async function callGemini(prompt) {
     const model = genAI.getGenerativeModel({
         model: modelStr,
         generationConfig: { 
-            maxOutputTokens: 1500, 
             responseMimeType: "application/json",
             responseSchema: {
                 type: SchemaType.OBJECT,
