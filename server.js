@@ -275,7 +275,13 @@ async function callGemini(prompt) {
     const modelStr = await getGeminiModelString();
     const model = genAI.getGenerativeModel({
         model: modelStr,
-        generationConfig: { maxOutputTokens: 1500 }
+        generationConfig: { maxOutputTokens: 1500 },
+        safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+        ]
     });
     const res = await model.generateContent(prompt);
     return res.response.text();
@@ -333,9 +339,9 @@ Return ONLY strict JSON in this format, NO Markdown formatting, just raw JSON:
 
     try {
         let gptRaw = "", geminiRaw = "", claudeRaw = "";
-        try { gptRaw = await callChatGPT(gptPrompt); } catch(e) { gptRaw = `{"symbol":"","stockName":"[GPT 에러]","buyPrice":"0","sellPrice":"0","reason":"${e.message}"}`; }
-        try { geminiRaw = await callGemini(geminiPrompt); } catch(e) { geminiRaw = `{"symbol":"","stockName":"[Gemini 에러]","buyPrice":"0","sellPrice":"0","reason":"${e.message}"}`; }
-        try { claudeRaw = await callClaude(claudePrompt); } catch(e) { claudeRaw = `{"symbol":"","stockName":"[Claude 에러]","buyPrice":"0","sellPrice":"0","reason":"${e.message}"}`; }
+        try { gptRaw = await callChatGPT(gptPrompt); } catch(e) { gptRaw = JSON.stringify({symbol:"",stockName:"[GPT 에러]",buyPrice:"0",sellPrice:"0",reason:e.message.substring(0,250)}); }
+        try { geminiRaw = await callGemini(geminiPrompt); } catch(e) { geminiRaw = JSON.stringify({symbol:"",stockName:"[Gemini 에러]",buyPrice:"0",sellPrice:"0",reason:e.message.substring(0,250)}); }
+        try { claudeRaw = await callClaude(claudePrompt); } catch(e) { claudeRaw = JSON.stringify({symbol:"",stockName:"[Claude 에러]",buyPrice:"0",sellPrice:"0",reason:e.message.substring(0,250)}); }
         
         const gptP = extractJson(gptRaw);
         const geminiP = extractJson(geminiRaw);
