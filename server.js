@@ -57,7 +57,7 @@ async function fetchYahooPrice(symbol) {
 async function fetchMacroNews(market) {
     try {
         const query = market === 'KR' ? '경제 OR 정치 OR 주식 OR 산업' : 'Economy OR Politics OR "Stock Market" OR Technology OR Policy';
-        const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&language=${market === 'KR'?'ko':'en'}&pageSize=50&apiKey=${process.env.NEWS_API_KEY}`;
+        const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&language=${market === 'KR'?'ko':'en'}&pageSize=100&apiKey=${process.env.NEWS_API_KEY}`;
         const res = await fetch(url);
         const data = await res.json();
         return data.articles || [];
@@ -123,7 +123,7 @@ const SYMBOLS = {
 async function getMarketContext(market) {
     const news = await fetchMacroNews(market);
     
-    let ctx = `📰 [최신 정치/경제 및 시장 주요 뉴스 (총 ${news.length > 0 ? news.length : 50}개)]\n`;
+    let ctx = `📰 [최신 정치/경제 및 시장 주요 뉴스 (총 ${news.length > 0 ? news.length : 100}개)]\n`;
     ctx += "이 뉴스들을 깊이 있게 스터디(Study)하여 현재 어느 섹터나 테마 주식이 오를지 분석하십시오.\n\n";
     
     if (news && news.length > 0) {
