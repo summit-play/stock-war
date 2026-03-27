@@ -54,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
         for(let key in picks) {
             const p = picks[key];
             const box = picksBoxes[key];
-            if(!box || !p.symbol) continue;
+            if(!box) continue;
             
             let newsHref = "#";
             if(p.symbol && p.symbol.endsWith('.KS')) newsHref = `https://finance.naver.com/item/news.naver?code=${p.symbol.replace('.KS', '')}`;
